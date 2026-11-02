@@ -8,6 +8,7 @@ export type { WebSearchResult };
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
+import { assertUrlPolicy, guardedFetch } from "./net-guard.ts";
 
 /**
  * Server-side web tools for the researcher sub-agent — a minimal port of the
@@ -51,12 +52,17 @@ function truncate(text: string): string {
 	return `${text.slice(0, MAX_CONTENT_CHARS)}\n\n[Truncated at ${MAX_CONTENT_CHARS} characters]`;
 }
 
-/** Jina Reader fallback for JS-rendered pages (no deps — plain fetch). */
+/** Jina Reader fallback for JS-rendered pages. Rides the net guard like
+ *  every other fetch (ssrf-guard wave, 2026-11-02); only ever called for a
+ *  URL that already passed the policy, and only after its guardedFetch
+ *  succeeded (the caller's order). */
 async function fetchViaJina(url: string): Promise<string | null> {
 	try {
-		const res = await fetch(`https://r.jina.ai/${url}`, {
-			headers: { Accept: "text/markdown", "X-No-Cache": "true" },
-			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		const res = await guardedFetch(`https://r.jina.ai/${url}`, {
+			init: {
+				headers: { Accept: "text/markdown", "X-No-Cache": "true" },
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+			},
 		});
 		if (!res.ok) return null;
 		const content = await res.text();
@@ -81,13 +87,15 @@ function htmlToMarkdown(html: string): { title: string; content: string } | null
 }
 
 async function fetchAndExtract(url: string): Promise<string> {
-	const resp = await fetch(url, {
-		headers: {
-			"User-Agent": USER_AGENT,
-			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			"Accept-Language": "en-US,en;q=0.9",
+	const resp = await guardedFetch(url, {
+		init: {
+			headers: {
+				"User-Agent": USER_AGENT,
+				Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.9",
+			},
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		},
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 	});
 	if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
 
@@ -167,16 +175,16 @@ export function createWebTools(search: () => SearchProvider | null): Record<stri
 				"Handles HTML pages and plain text; JS-rendered pages fall back to a reader service.",
 			parameters: webFetchInput,
 			execute: serverExecute("web_fetch", webFetchInput, async ({ url }): Promise<string> => {
+				// THE NET GUARD (ssrf-guard wave, 2026-11-02): policy verdict
+				// BEFORE any connection — an invalid URL and a policy refusal
+				// are different messages, both returned as strings.
 				try {
-					const parsed = new URL(url);
-					// URL.protocol carries a TRAILING COLON ("https:", WHATWG) — the
-					// colon-less comparison born from the py-harness port (urlparse's
-					// scheme has NO colon) rejected every valid URL ever fetched
-					// (owner-reported via OpenRouter logs, 2026-10-07).
-					if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-						throw new Error("Only http(s) URLs are supported");
-				} catch {
-					return `web_fetch failed: invalid URL "${url}"`;
+					assertUrlPolicy(url);
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					return message.startsWith("invalid URL")
+						? `web_fetch failed: invalid URL "${url}"`
+						: `web_fetch refused: ${message}`;
 				}
 				try {
 					return await fetchAndExtract(url);

@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
 import { pdfExtract, pdfInfo, pdfProbe, pdfSearch } from "../subagents/pdf-ops.ts";
+import { assertUrlPolicy, guardedFetch } from "./net-guard.ts";
 
 /**
  * PDF reading tools for the RESEARCHER sub-agent (owner design B,
@@ -103,20 +104,25 @@ export function createPdfReadTools(dir: string): Record<string, AgentTool<any>> 
 				"Then read it with pdf_extract / pdf_search. Use when web_fetch reports a URL is a PDF.",
 			parameters: pdfFetchInput,
 			execute: serverExecute("web_fetch_pdf", pdfFetchInput, async ({ url }): Promise<PdfFetchSummary | string> => {
+				// THE NET GUARD (ssrf-guard wave, 2026-11-02): policy verdict
+				// BEFORE any connection — a refused URL writes no file.
 				try {
-					const parsed = new URL(url);
-					if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-						throw new Error("Only http(s) URLs are supported");
-				} catch {
-					return `web_fetch_pdf failed: invalid URL "${url}"`;
+					assertUrlPolicy(url);
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					return message.startsWith("invalid URL")
+						? `web_fetch_pdf failed: invalid URL "${url}"`
+						: `web_fetch_pdf refused: ${message}`;
 				}
 				try {
-					const resp = await fetch(url, {
-						headers: {
-							"User-Agent": USER_AGENT,
-							Accept: "application/pdf,application/octet-stream,*/*",
+					const resp = await guardedFetch(url, {
+						init: {
+							headers: {
+								"User-Agent": USER_AGENT,
+								Accept: "application/pdf,application/octet-stream,*/*",
+							},
+							signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 						},
-						signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 					});
 					if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
 					const contentType = resp.headers.get("content-type") ?? "";
