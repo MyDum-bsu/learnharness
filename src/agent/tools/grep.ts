@@ -15,6 +15,7 @@ import {
 	walkFiles,
 	WALK_TIMEOUT_MS,
 } from "./fs-shared.ts";
+import { assertPathAllowed } from "./fs-deny.ts";
 
 /**
  * The grep tool — sources v1 (2026-09-19): pi's dist/core/tools/grep.js
@@ -54,6 +55,7 @@ export const grepTool: AgentTool<typeof grepInput> = {
 	execute: serverExecute("grep", grepInput, async (input, ctx) => {
 		if (ctx?.signal?.aborted) return "Operation aborted";
 		const searchPath = resolveSourcePath(input.path);
+		await assertPathAllowed(searchPath);
 
 		let stat;
 		try {

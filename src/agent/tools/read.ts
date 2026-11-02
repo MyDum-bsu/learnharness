@@ -4,6 +4,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute, type ImageFileResult } from "../tool-execute.ts";
 import { resolveSourcePath } from "./fs-shared.ts";
+import { assertPathAllowed, redactSecrets } from "./fs-deny.ts";
 import { detectSupportedImageMimeTypeFromFile, processImage } from "../image-processing/index.ts";
 
 /**
@@ -99,6 +100,10 @@ export function createReadTool(model?: ReadModel): AgentTool<typeof readInput> {
 		parameters: readInput,
 		execute: serverExecute("read", readInput, async ({ path: rawPath, offset, limit }, { signal }): Promise<string | ImageFileResult> => {
 			const absolute = resolveSourcePath(rawPath);
+			// The guard verdict lands BEFORE any open — including the image
+			// mime sniff, which reads the file's first bytes. Text that does
+			// get read is scrubbed for key-like values before it leaves.
+			await assertPathAllowed(absolute);
 			const mime = await detectSupportedImageMimeTypeFromFile(absolute);
 			const buffer = await fs.readFile(absolute, { signal });
 			if (mime) {
@@ -115,7 +120,7 @@ export function createReadTool(model?: ReadModel): AgentTool<typeof readInput> {
 					...(processed.ok ? { images: [{ data: processed.data, mimeType: processed.mimeType }] } : {}),
 				};
 			}
-			return readTextSlice(buffer.toString("utf-8"), offset, limit);
+			return redactSecrets(readTextSlice(buffer.toString("utf-8"), offset, limit));
 		}),
 	};
 }

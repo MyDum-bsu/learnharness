@@ -11,6 +11,7 @@ import {
 	resolveSourcePath,
 	walkFiles,
 } from "./fs-shared.ts";
+import { assertPathAllowed } from "./fs-deny.ts";
 
 /**
  * The find tool — sources v1 (2026-09-19): pi's dist/core/tools/find.js
@@ -41,6 +42,7 @@ export const findTool: AgentTool<typeof findInput> = {
 	execute: serverExecute("find", findInput, async (input, ctx) => {
 		if (ctx?.signal?.aborted) return "Operation aborted";
 		const searchPath = resolveSourcePath(input.path);
+		await assertPathAllowed(searchPath);
 		let stat;
 		try {
 			stat = await fs.stat(searchPath);

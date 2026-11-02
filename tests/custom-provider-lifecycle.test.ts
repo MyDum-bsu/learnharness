@@ -104,11 +104,20 @@ test("actual native encoder preserves USER and tool-result images under missing 
 	assert.deepEqual(piModels().getModel("custom", "m")!.input, ["text"]);
 });
 test("teacher-bound read returns image without contradictory omission note", async () => {
-	const file = path.join(scratch, "synthetic.png"); fs.writeFileSync(file, Buffer.from(image.data, "base64"));
-	const engine = piEngineForSpec({ provider: "custom", id: "m" });
-	const result = await createReadTool(engine.model).execute("read-1", { path: file });
-	assert.ok(result.content.some((block) => block.type === "image"));
-	assert.ok(!JSON.stringify(result).includes("image will be omitted"));
+	// The learner's image lives in its own space, OUTSIDE the app-private
+	// root (HOME = LH_DATA_DIR = scratch here) — the fs-deny guard refuses
+	// reads from the app's data dir, as it must.
+	const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-read-notes-"));
+	const file = path.join(notesDir, "synthetic.png");
+	fs.writeFileSync(file, Buffer.from(image.data, "base64"));
+	try {
+		const engine = piEngineForSpec({ provider: "custom", id: "m" });
+		const result = await createReadTool(engine.model).execute("read-1", { path: file });
+		assert.ok(result.content.some((block) => block.type === "image"));
+		assert.ok(!JSON.stringify(result).includes("image will be omitted"));
+	} finally {
+		fs.rmSync(notesDir, { recursive: true, force: true });
+	}
 });
 test("backend image rejection surfaces once, never retries without images", async () => {
 	globalThis.fetch = async (url, init) => { capture(url, init); return Response.json({ error: { message: "images rejected by backend" } }, { status: 400 }); };
