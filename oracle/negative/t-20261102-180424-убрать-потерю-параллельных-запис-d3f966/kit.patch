@@ -1,0 +1,14 @@
+--- a/src/server/compaction.ts
++++ b/src/server/compaction.ts
+@@ -241,7 +241,11 @@
+ 		const marker = newCompactionMarker(trimmed, details);
+-		deps.chatStore.saveMessages(chatId, [...messages, marker]);
++		// NEAR-MISS MUTANT: re-reads the record "to be safe" but still writes
++		// the pre-await snapshot, so every write made during the summarize
++		// await is still lost. The oracle must reject this.
++		const latest = deps.chatStore.getChat(chatId);
++		if (!latest) return;
++		deps.chatStore.saveMessages(chatId, [...messages, marker]);
+ 		// The money channel: the summary is a real model call on the
+ 		// session's own engine — its usage keys to the marker (provenance:
+ 		// the transcript shows the compaction divider at the marker).
