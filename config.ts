@@ -122,6 +122,14 @@ export const SETTINGS_FILE = path.join(DATA_ROOT, "settings.json");
 export const DEVICES_FILE = path.join(DATA_ROOT, "devices.json");
 
 /**
+ * THE PUSH REGISTRY (push wave, 2026-11-02): APNs/FCM tokens per paired
+ * device — {deviceId, platform, token}. Push belongs to the DEVICE token's
+ * lifecycle: revoking a device deletes its registrations (the next send
+ * cannot reach it); dead provider tokens are pruned on the 410/404 path.
+ */
+export const PUSH_FILE = path.join(DATA_ROOT, "push.json");
+
+/**
  * User prompt-override files (settings-storage wave, 2026-09-19): the
  * per-segment system-prompt overrides mirroring the SOURCE layout
  * (src/agent/prompts/) — the shared base as prompts/system-prompt.md,

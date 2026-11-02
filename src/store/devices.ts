@@ -95,6 +95,11 @@ export function listDevices(): Omit<DeviceRecord, "tokenHash">[] {
 	return readRecord().devices.map(({ tokenHash, ...safe }) => safe);
 }
 
+/** One device by id (push wave: revoked devices must not receive pushes). */
+export function deviceById(id: string): DeviceRecord | undefined {
+	return readRecord().devices.find((device) => device.id === id);
+}
+
 // ── pairing ─────────────────────────────────────────────────────────────────
 
 interface PendingPairing {

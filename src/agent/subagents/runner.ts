@@ -92,6 +92,10 @@ export interface JobRunnerDeps {
 	 *  Injected because the agent layer may not read the key store; absent
 	 *  in tests that inject engines directly (test engines never owe a key). */
 	providerKeyMissing?: (provider: string, tier: ModelSlotName) => ProviderKeyMissing | null;
+	/** Job-settled hook (push wave, 2026-11-02): called at the terminal
+	 *  status flip with the fresh record — the SERVER wiring notifies other
+	 *  devices; the agent layer never imports server code. */
+	onJobSettled?: (job: import("../../core/contracts/jobs.ts").JobRecord) => void;
 }
 
 export interface JobRunner {
@@ -314,6 +318,10 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			activity: failed ? "failed" : "finished",
 			delivery: { kind: "result", status: "pending" },
 		});
+		// PUSH (push wave, 2026-11-02): the terminal flip is the completion
+		// signal — the server wiring turns it into a push to other devices.
+		const settled = jobStore.getJob(jobId);
+		if (settled) deps.onJobSettled?.(settled);
 		// The saved result now belongs to the session. Do not keep the worker,
 		// abort registration, or temporary resources alive behind a question.
 		void deliver(buildSubagentSteer(job, result)).catch((err: unknown) => {
