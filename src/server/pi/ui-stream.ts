@@ -96,6 +96,10 @@ export interface PiTurnSpec {
 	/** The coalescing window for update fan-out (COMPACTION LAW above).
 	 *  Defaults to 100ms; tests tighten it. */
 	updateFlushMs?: number;
+	/** The turn fuse's learner-facing surface (turn-fuse wave, 2026-11-02):
+	 *  the handler registers where a trip blocker should be sent from — the
+	 *  only seam able to push an error frame while the run is live. */
+	bindFuseSender?: (sendTrip: (errorText: string) => void) => void;
 }
 
 /** One view onto a running turn: push() replays/streams an event, done()
@@ -121,7 +125,7 @@ export interface PiTurnHandle {
 }
 
 export function runPiTurn(spec: PiTurnSpec): PiTurnHandle {
-	const { agent, onError, onFinish, onSettleError, onSettleFailure, usedToolCallIds, updateFlushMs = 100, requestCycle } = spec;
+	const { agent, onError, onFinish, onSettleError, onSettleFailure, usedToolCallIds, updateFlushMs = 100, requestCycle, bindFuseSender } = spec;
 	const uniquifier = usedToolCallIds ? new ToolCallIdUniquifier(usedToolCallIds) : undefined;
 
 	let settled = false;
@@ -260,6 +264,7 @@ export function runPiTurn(spec: PiTurnSpec): PiTurnHandle {
 			closeAll();
 		}
 	};
+	bindFuseSender?.((errorText) => send({ type: "error", errorText }));
 	requestCycle?.bindRelease(handle);
 	agent.subscribe((event) => {
 		if (!requestCycle?.hold(event)) handle(event);
