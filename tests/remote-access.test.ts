@@ -86,7 +86,11 @@ test("proxy in server mode: pages redirect to login, APIs 401, login flow stays 
 });
 
 test("login route: sets a secure session cookie on success, throttles repeated failures", async () => {
-	await withEnv(env, async () => {
+	// Per-address throttling is explicit behind a declared proxy (pairing
+	// wave, 2026-11-02): a directly exposed server throttles one global
+	// bucket instead, so this test declares the trusted-proxy mode it is
+	// exercising.
+	await withEnv({ ...env, LH_TRUST_PROXY: "1" }, async () => {
 		const post = (password: string, ip: string) => {
 			const body = new FormData();
 			body.set("password", password);

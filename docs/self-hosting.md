@@ -116,3 +116,29 @@ LH_SERVER_PASSWORD=... LH_DATA_DIR=/srv/learnharness LH_AUTH_FILE=/srv/learnharn
   ChatGPT/Copilot subscription window, the local Claude Code CLI, and
   dropping file paths from your computer. Use API keys on the server instead.
 - The agent's PDF tool reads paths on the **server's** filesystem.
+
+## Devices and pairing
+
+Besides the shared password sign-in, devices pair once and keep their own
+token (pairing wave, 2026-11-02):
+
+- The owner mints a one-time code: `POST /api/devices` with
+  `{ "scope": "mobile", "name": "Pixel 9" }` (an owner session, the
+  `LH_API_TOKEN` bearer, or an admin-scope device). The response carries
+  `{ code, pairingUrl, expiresAt }`; the code lives 5 minutes and exchanges
+  exactly once.
+- The device exchanges it: `POST /api/devices/pair` with `{ "code": "…" }`
+  → `{ token, deviceId, scope, expiresAt }`. The phone client stores that
+  token; the server keeps only its SHA-256 hash in `data/devices.json`.
+- `GET /api/devices` lists devices (never hashes) and pending codes;
+  `DELETE /api/devices/<id>` revokes — the device's next request fails.
+- `"mobile"` scope cannot mint pairings, list devices, revoke, or manage
+  keys/settings (the p1-3 route gates). Use `"admin"` only for trusted
+  desktop-class clients; admin tokens never expire.
+- `LH_TRUST_PROXY=1` (behind a reverse proxy) makes sign-in throttling
+  per-client via `X-Forwarded-For`; leave it unset when the server is
+  exposed directly — otherwise attackers can rotate the header to reset
+  the throttle. Direct exposure uses one global failure bucket instead.
+
+Terminate TLS at a reverse proxy (Caddy/nginx) or use Tailscale — the
+server speaks plain HTTP on its port and never holds a certificate.
