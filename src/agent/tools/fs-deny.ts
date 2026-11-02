@@ -31,13 +31,30 @@ export interface DenyScope {
 	extraDirs: string[]; // additional private roots (packed Electron userData), may be empty
 }
 
-const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+// The repo root is computed LAZILY, at first use, and never at module scope:
+// Turbopack's page-data collection evaluates this module with a bundler URL
+// for import.meta.url, and a module-scope fileURLToPath(new URL(...)) there
+// throws ("path argument must be string or URL — received an instance of
+// URL"), failing the whole build. At call time (Node runtime) the resolution
+// is exact; if it ever cannot run, the server's cwd is the repo root in
+// every supported layout.
+let cachedRepoRoot: string | undefined;
+function repoRoot(): string {
+	cachedRepoRoot ??= (() => {
+		try {
+			return fileURLToPath(new URL("../../../", import.meta.url));
+		} catch {
+			return process.cwd();
+		}
+	})();
+	return cachedRepoRoot;
+}
 
 /** home from os.homedir() (live, so tests can re-anchor it); dataDir/authFile
  *  from LH_DATA_DIR/LH_AUTH_FILE at call time — never frozen at import. */
 export function defaultDenyScope(): DenyScope {
-	const dataDir = process.env.LH_DATA_DIR ? path.resolve(process.env.LH_DATA_DIR) : path.join(REPO_ROOT, "data");
-	const authFile = process.env.LH_AUTH_FILE ? path.resolve(process.env.LH_AUTH_FILE) : path.join(REPO_ROOT, "auth.json");
+	const dataDir = process.env.LH_DATA_DIR ? path.resolve(process.env.LH_DATA_DIR) : path.join(repoRoot(), "data");
+	const authFile = process.env.LH_AUTH_FILE ? path.resolve(process.env.LH_AUTH_FILE) : path.join(repoRoot(), "auth.json");
 	const extraDirs = process.env.LH_USER_DATA_DIR ? [path.resolve(process.env.LH_USER_DATA_DIR)] : [];
 	return { home: os.homedir(), dataDir, authFile, extraDirs };
 }
