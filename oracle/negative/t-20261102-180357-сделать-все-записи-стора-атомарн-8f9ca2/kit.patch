@@ -1,0 +1,13 @@
+--- a/src/store/chats.ts
++++ b/src/store/chats.ts
+@@ -53,6 +53,9 @@
+  *  A future-version guard lives on the read side (getChat). */
+ function writeChat(record: ChatRecord): void {
+-	fs.writeFileSync(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
++	const target = chatFile(record.id);
++	const temp = `${target}.tmp`;
++	fs.writeFileSync(temp, JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
++	fs.renameSync(temp, target);
+ }
+ 
+ function getChat(id: string): ChatRecord | null {
