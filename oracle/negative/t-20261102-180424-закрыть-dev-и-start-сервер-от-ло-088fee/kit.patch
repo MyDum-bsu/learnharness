@@ -1,0 +1,14 @@
+--- a/package.json
++++ b/package.json
+@@ -13,9 +13,9 @@
+ 	"private": true,
+ 	"main": "electron/main.cjs",
+ 	"scripts": {
+-		"dev": "next dev -H 127.0.0.1",
++		"dev": "next dev",
+ 		"build": "next build",
+-		"start": "next start -H 127.0.0.1",
++		"start": "next start",
+ 		"test": "NODE_ENV=test tsx --test tests/*.test.ts tests/*.test.tsx",
+ 		"lint": "eslint .",
+ 		"typecheck": "tsc --noEmit",
