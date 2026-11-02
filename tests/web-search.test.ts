@@ -4,6 +4,7 @@
  */
 
 import assert from "node:assert/strict";
+import * as dns from "node:dns";
 import { describe, it } from "node:test";
 import { createWebTools } from "../src/agent/tools/web.ts";
 import { jobTools } from "../src/agent/tools/jobs.ts";
@@ -79,19 +80,22 @@ describe("web_search on the injected port (web.ts)", () => {
 		assert.match(String(out.details), /web_fetch failed: invalid URL/);
 	});
 
-	it("web_fetch ACCEPTS a valid http(s) URL — the protocol gate must not reject everything (the colon bug, 2026-10-07)", async () => {
+	it("web_fetch ACCEPTS a valid https URL — the gate must not reject everything (the colon bug, 2026-10-07)", async () => {
 		// URL.protocol is \"https:\" WITH the colon; the colon-less comparison
 		// ported from the py harness (urlparse().scheme has none) made the
 		// gate throw for every valid URL — the tool never fetched a page in
 		// its life (owner-reported via OpenRouter logs). This pin stubs fetch
-		// so the happy path runs hermetically: a VALID url must REACH the
-		// fetch stage.
+		// AND dns (the net guard judges the resolve before dialing — the
+		// ssrf-guard wave, 2026-11-02, https-only) so the happy path runs
+		// hermetically: a VALID https url must REACH the fetch stage.
 		const { web_fetch } = createWebTools(() => null);
 		const realFetch = globalThis.fetch;
+		const realLookup = dns.promises.lookup;
 		globalThis.fetch = (async () =>
 			new Response("A plain text page with enough content to matter for the test.", {
 				headers: { "content-type": "text/plain" },
 			})) as typeof fetch;
+		dns.promises.lookup = (async () => [{ address: "93.184.216.34", family: 4 }]) as typeof dns.promises.lookup;
 		try {
 			const ok = await web_fetch!.execute!("c-ok", { url: "https://example.com/page" });
 			assert.ok(
@@ -101,9 +105,10 @@ describe("web_search on the injected port (web.ts)", () => {
 			assert.match(String(ok.details), /plain text page/);
 
 			const ftp = await web_fetch!.execute!("c-ftp", { url: "ftp://example.com/file" });
-			assert.match(String(ftp.details), /invalid URL/, "non-http(s) schemes still rejected");
+			assert.match(String(ftp.details), /only https/, "non-https schemes refused by the guard policy");
 		} finally {
 			globalThis.fetch = realFetch;
+			dns.promises.lookup = realLookup;
 		}
 	});
 });

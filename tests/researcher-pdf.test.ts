@@ -13,6 +13,7 @@
  */
 
 import assert from "node:assert/strict";
+import * as dns from "node:dns";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -124,21 +125,26 @@ describe("researcher pdf tools — download + triage", () => {
 		}
 	});
 
-	it("rejects non-PDF responses and non-http(s) schemes with error strings", async () => {
+	it("rejects non-PDF responses and non-https schemes with error strings", async () => {
 		const dir = await newDir();
 		const tools = createPdfReadTools(dir);
 		const realFetch = globalThis.fetch;
+		const realLookup = dns.promises.lookup;
 		globalThis.fetch = (async () =>
 			new Response("<html>just a page</html>", { headers: { "content-type": "text/html" } })) as typeof fetch;
+		// The net guard (ssrf-guard wave, 2026-11-02) judges the resolve
+		// before dialing — stub it next to fetch to stay zero-network.
+		dns.promises.lookup = (async () => [{ address: "93.184.216.34", family: 4 }]) as typeof dns.promises.lookup;
 		try {
 			const notPdf = asText(await tools.web_fetch_pdf!.execute!("t5", { url: "https://example.com/doc" }));
 			assert.match(notPdf, /web_fetch_pdf failed/);
 			assert.match(notPdf, /Not a PDF/);
 		} finally {
 			globalThis.fetch = realFetch;
+			dns.promises.lookup = realLookup;
 		}
 		const ftp = asText(await tools.web_fetch_pdf!.execute!("t6", { url: "ftp://example.com/x.pdf" }));
-		assert.match(ftp, /invalid URL/);
+		assert.match(ftp, /only https/);
 	});
 });
 
