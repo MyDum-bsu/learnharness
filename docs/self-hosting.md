@@ -142,3 +142,23 @@ token (pairing wave, 2026-11-02):
 
 Terminate TLS at a reverse proxy (Caddy/nginx) or use Tailscale — the
 server speaks plain HTTP on its port and never holds a certificate.
+
+## Push notifications
+
+The phone learns about finished turns, waiting questions and finished
+background jobs (push wave, 2026-11-02). Pushes are tied to the paired
+device: `POST /api/push/register` with `{ "platform": "ios" | "android",
+"token": "…" }` authenticates with the DEVICE token; revoking the device
+deletes its registrations, and a provider-rejected token is pruned.
+
+Server credentials (environment):
+
+- **iOS — APNs**: `APNS_KEY_P8` (the `.p8` contents, `\n` allowed),
+  `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC` (your bundle id).
+- **Android — FCM**: `FCM_SERVICE_ACCOUNT_JSON` (the service-account JSON
+  as one string; the `firebase.messaging` scope).
+
+With neither set, registration answers an explicit `503` and the trigger
+path logs `not configured` — pushes never fail silently. Payloads carry
+`chatId` (the deep-link target) and `kind`
+(`question`, `turn-settled`, `job-done`).

@@ -13,6 +13,7 @@ import { chatGPTStreamError } from "../agent/chatgpt-stream.ts";
 import { SubscriptionRequestCycle, type SubscriptionDispatchLifecycle } from "../agent/subscription-request-cycle.ts";
 import { reconstructRequestCause } from "../core/native-messages.ts";
 import { createJobRunner } from "../agent/subagents/runner.ts";
+import { notifyJobDone, notifyTurnSettled } from "./push.ts";
 import { createExtractionPipeline } from "../agent/subagents/extraction.ts";
 import type { ModelRole } from "../../config.ts";
 import {
@@ -113,6 +114,10 @@ const jobRunner = createJobRunner({
 	// null = honestly unavailable; the dispatch-level drop (below) uses the
 	// same signal so keyless servers never see the research tool at all.
 	searchProvider,
+	// PUSH (push wave, 2026-11-02): the job's terminal flip notifies the
+	// learner's other devices. Fire-and-forget inside; a missing provider
+	// logs an explicit error (never silent).
+	onJobSettled: (job) => notifyJobDone(job.chatId, job.kind, job.status === "error"),
 });
 /** The app's ONE extraction pipeline instance — both front doors share it:
  *  quiz-triggered session runs (turn-service) and notes imports
@@ -630,6 +635,13 @@ export async function handleChatInput(
 				// real truth — BEFORE endTurn, so "turn-settled" guarantees a
 				// subsequent fetch reads the dismissal already in the record
 				// (the same ordering law as persistTurn itself).
+				// PUSH (push wave, 2026-11-02): the learner's other devices learn
+				// the turn settled — or that a question waits. Fire-and-forget;
+				// settlement never waits for a push provider (an unconfigured
+				// provider logs explicitly, never silently).
+				if (!isAborted) {
+					notifyTurnSettled(chatId, hasUnresolvedQuestion(stores.chatStore.getChat(chatId)?.messages ?? []));
+				}
 				applyParkedDismissal(stores.chatStore, chatId);
 				// LAST: a poller that sees not-in-flight must read an already-persisted
 				// record — endTurn only after persistTurn has done its job.

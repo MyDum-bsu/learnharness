@@ -83,6 +83,14 @@ export function deviceScope(headers: Headers): "admin" | "mobile" | undefined {
 	return undefined;
 }
 
+/** The validated device record behind a paired token (push wave: the push
+ *  registry needs the device id, not just its scope). */
+export function deviceOf(headers: Headers): ReturnType<typeof deviceForToken> {
+	const bearer = headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+	if (!bearer || !bearer.startsWith("lhdev_")) return undefined;
+	return deviceForToken(bearer);
+}
+
 /** True when server mode is off, or the request carries a valid session or API token. */
 export function remoteRequestAuthorized(headers: Headers, env: Env = process.env, now = Date.now()): boolean {
 	if (!serverModeEnabled(env)) return true;
