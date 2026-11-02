@@ -238,7 +238,22 @@ async function compact(deps: CompactionDeps, chatId: string): Promise<void> {
 			at: new Date().toISOString(),
 		};
 		const marker = newCompactionMarker(trimmed, details);
-		deps.chatStore.saveMessages(chatId, [...messages, marker]);
+		// THE STALE-SNAPSHOT FIX (stale-write wave, 2026-11-02): the
+		// summarizer await above opened a write window — artifact toggles,
+		// dismisses and turn settlement append to the record while it runs,
+		// and the pre-await `messages` snapshot no longer holds the truth.
+		// Re-read and merge: the marker joins the CURRENT array (writers
+		// only append, so the cut's first-kept id still resolves), and
+		// getChat → merge → save run synchronously with no await between —
+		// atomic within this process. A vanished record is an honest,
+		// logged no-op (the chat was purged mid-summary), never a silent
+		// resurrection of a stale snapshot.
+		const fresh = deps.chatStore.getChat(chatId);
+		if (!fresh) {
+			console.info(`[chat ${chatId}] compaction skipped — the record vanished while the summarizer ran`);
+			return;
+		}
+		deps.chatStore.saveMessages(chatId, [...fresh.messages, marker]);
 		// The money channel: the summary is a real model call on the
 		// session's own engine — its usage keys to the marker (provenance:
 		// the transcript shows the compaction divider at the marker).
