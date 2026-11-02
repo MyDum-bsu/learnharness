@@ -95,7 +95,7 @@ describe("web_search on the injected port (web.ts)", () => {
 			new Response("A plain text page with enough content to matter for the test.", {
 				headers: { "content-type": "text/plain" },
 			})) as typeof fetch;
-		dns.promises.lookup = (async () => [{ address: "93.184.216.34", family: 4 }]) as typeof dns.promises.lookup;
+		dns.promises.lookup = (async () => [{ address: "93.184.216.34", family: 4 }]) as unknown as typeof dns.promises.lookup;
 		try {
 			const ok = await web_fetch!.execute!("c-ok", { url: "https://example.com/page" });
 			assert.ok(

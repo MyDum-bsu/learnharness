@@ -134,7 +134,7 @@ describe("researcher pdf tools — download + triage", () => {
 			new Response("<html>just a page</html>", { headers: { "content-type": "text/html" } })) as typeof fetch;
 		// The net guard (ssrf-guard wave, 2026-11-02) judges the resolve
 		// before dialing — stub it next to fetch to stay zero-network.
-		dns.promises.lookup = (async () => [{ address: "93.184.216.34", family: 4 }]) as typeof dns.promises.lookup;
+		dns.promises.lookup = (async () => [{ address: "93.184.216.34", family: 4 }]) as unknown as typeof dns.promises.lookup;
 		try {
 			const notPdf = asText(await tools.web_fetch_pdf!.execute!("t5", { url: "https://example.com/doc" }));
 			assert.match(notPdf, /web_fetch_pdf failed/);
