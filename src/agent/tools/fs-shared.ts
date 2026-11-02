@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { defaultDenyScope, deniedReason, redactSecrets } from "./fs-deny.ts";
 
 /**
  * Shared plumbing for the learner-filesystem tools (ls / find / grep) —
@@ -51,10 +52,13 @@ export function formatSize(bytes: number): string {
 	return bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}KB` : `${bytes}B`;
 }
 
-/** Cap output to MAX_OUTPUT_BYTES on whole lines, pi's truncateHead idiom. */
+/** Cap output to MAX_OUTPUT_BYTES on whole lines, pi's truncateHead idiom.
+ *  Each line is scrubbed through redactSecrets BEFORE the byte accounting —
+ *  the ceiling is measured on the masked text the model will actually see. */
 export function capOutput(lines: string[]): { content: string; truncated: boolean } {
 	const out: string[] = [];
-	for (const line of lines) {
+	for (const raw of lines) {
+		const line = redactSecrets(raw);
 		const candidate = [...out, line].join("\n");
 		if (Buffer.byteLength(candidate, "utf-8") > MAX_OUTPUT_BYTES) {
 			return { content: out.join("\n"), truncated: true };
@@ -130,7 +134,10 @@ export function matchGlob(relativePath: string, pattern: string): boolean {
 }
 
 /**
- * Depth-first walk under `root`, never entering EXCLUDED_DIR_NAMES.
+ * Depth-first walk under `root`, never entering EXCLUDED_DIR_NAMES and never
+ * entering or emitting anything the fs-deny guard denies (deniedReason — the
+ * single policy table). Content of a denied file is never read by a walk
+ * consumer: the entry is pruned before `visit` sees it.
  * `visit` receives absolute file paths; returning true STOPS the walk
  * (find's result limit). The deadline bounds a home-dir walk to
  * WALK_TIMEOUT_MS — partial results are the graceful degradation.
@@ -141,6 +148,7 @@ export async function walkFiles(
 	signal?: AbortSignal,
 ): Promise<{ timedOut: boolean; aborted: boolean }> {
 	const deadline = Date.now() + WALK_TIMEOUT_MS;
+	const scope = defaultDenyScope();
 	let timedOut = false;
 	let aborted = false;
 	if (signal?.aborted) return { timedOut: false, aborted: true };
@@ -171,9 +179,10 @@ export async function walkFiles(
 			}
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
-				if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
+				if (EXCLUDED_DIR_NAMES.has(entry.name) || deniedReason(full, scope) !== undefined) continue;
 				if (await walkDir(full)) return true;
 			} else if (entry.isFile()) {
+				if (deniedReason(full, scope) !== undefined) continue;
 				if (await visit(full)) return true;
 			}
 			// symlinks/other: not followed (pi's fd doesn't follow either)
