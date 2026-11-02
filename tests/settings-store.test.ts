@@ -68,9 +68,9 @@ describe("the settings store", () => {
 		assert.deepEqual(out.graph, { enabled: true }); // siblings survive
 	});
 
-	it("corrupt settings.json → null (first-boot semantics), never throws", () => {
+	it("corrupt settings.json → throws naming the file (corruption is surfaced, never read as factory defaults)", () => {
 		fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
 		fs.writeFileSync(SETTINGS_FILE, "{not json", "utf-8");
-		assert.equal(readSettings(), null);
+		assert.throws(() => readSettings(), (err: Error) => err instanceof Error && err.message.includes("settings.json"));
 	});
 });

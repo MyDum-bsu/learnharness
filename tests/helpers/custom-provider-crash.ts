@@ -9,10 +9,18 @@ globalThis.fetch = async (url, init) => {
 	return new Response('data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
 };
 const rename = fs.renameSync;
-const write = fs.writeFileSync;
 const read = fs.readFileSync;
 let authRenames = 0;
+// Store records are written atomically (temp + fsync + rename), so the fault
+// seam is the rename onto the target path, not the temp write: double-io
+// fails the settings publication before anything lands; settings-landed
+// lands the record and reports failure (the ambiguous-completion case).
 fs.renameSync = (...args: Parameters<typeof rename>) => {
+	if (args[1] === SETTINGS_FILE && fault === "double-io") throw new Error("fixture settings I/O failure");
+	if (args[1] === SETTINGS_FILE && fault === "settings-landed") {
+		rename(...args);
+		throw new Error("fixture ambiguous settings completion");
+	}
 	if (args[1] === AUTH_FILE) {
 		authRenames++;
 		if (fault === "auth-before-rename" || (fault === "double-io" && authRenames > 1)) throw new Error("fixture auth I/O failure");
@@ -21,11 +29,6 @@ fs.renameSync = (...args: Parameters<typeof rename>) => {
 		return;
 	}
 	return rename(...args);
-};
-fs.writeFileSync = (...args: Parameters<typeof write>) => {
-	if (args[0] === SETTINGS_FILE && fault === "double-io") throw new Error("fixture settings I/O failure");
-	if (args[0] === SETTINGS_FILE && fault === "settings-landed") { write(...args); throw new Error("fixture ambiguous settings completion"); }
-	return write(...args);
 };
 fs.readFileSync = ((...args: Parameters<typeof read>) => {
 	if (args[0] === AUTH_FILE && fault === "unreadable") throw Object.assign(new Error("fixture unreadable auth"), { code: "EACCES" });

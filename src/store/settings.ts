@@ -17,32 +17,25 @@
  * a value that would silently shift a knob.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { SETTINGS_FILE } from "../../config.ts";
 import {
 	sanitizeUserSettings,
 	type UserSettings,
 } from "../core/settings.ts";
 import type { SettingsStore } from "../core/ports.ts";
+import { SETTINGS_FILE } from "../../config.ts";
+import { writeFileAtomic } from "./atomic-write.ts";
+import { readJsonFile } from "./read-json.ts";
 
 /** The persisted record, or null when none exists (first boot). Runs the
- *  migration chain on every read — cheap: a no-op file check when current. */
+ *  migration chain on every read — cheap: a no-op file check when current.
+ *  A file that exists but is unreadable, unparseable or does not hold a
+ *  settings object THROWS naming the file — it must not read as "factory
+ *  defaults", or the next save would overwrite the user's broken record. */
 export function readSettings(): UserSettings | null {
-	let raw: string;
-	try {
-		raw = fs.readFileSync(SETTINGS_FILE, "utf-8");
-	} catch {
-		return null; // no settings.json yet — first boot, all factory defaults
-	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return null; // corrupt → first-boot semantics (all factory defaults)
-	}
-	const record = sanitizeUserSettings(parsed);
-	if (!record) return null;
+	const stored = readJsonFile(SETTINGS_FILE);
+	if (!stored.present) return null; // no settings.json yet — first boot
+	const record = sanitizeUserSettings(stored.value);
+	if (!record) throw new Error(`Settings record ${SETTINGS_FILE} does not hold a settings object`);
 	// Version chain (empty today): a future v2 migration slots in here —
 	// `if (record.version > CURRENT_SETTINGS_VERSION) …`. Unknown NEWER
 	// versions pass through untouched (the sanitizer preserved unknowns).
@@ -53,8 +46,7 @@ export function readSettings(): UserSettings | null {
 export function writeSettings(raw: unknown): UserSettings {
 	const settings = sanitizeUserSettings(raw);
 	if (!settings) throw new Error("settings record must be a JSON object");
-	fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-	fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, "\t"), "utf-8");
+	writeFileAtomic(SETTINGS_FILE, JSON.stringify(settings, null, "\t"));
 	return settings;
 }
 

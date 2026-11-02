@@ -17,6 +17,8 @@ import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
 import { phaseAt3Lh } from "../core/phases.ts";
+import { writeFileAtomic } from "./atomic-write.ts";
+import { readJsonFile } from "./read-json.ts";
 
 function chatFile(id: string): string {
 	if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`Invalid chat id: ${id}`);
@@ -55,16 +57,16 @@ function createChat(title: string, kind?: "practice"): ChatRecord {
  *  lazy migration means existing files only get stamped on their next write.
  *  A future-version guard lives on the read side (getChat). */
 function writeChat(record: ChatRecord): void {
-	fs.writeFileSync(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
+	writeFileAtomic(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"));
 }
 
+/** Absent record → null (first boot). A record that exists but does not parse
+ *  THROWS, naming the file: a silent null here would let the next save
+ *  rewrite the broken record as a fresh/default one. */
 function getChat(id: string): ChatRecord | null {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(fs.readFileSync(chatFile(id), "utf-8"));
-	} catch {
-		return null;
-	}
+	const stored = readJsonFile(chatFile(id));
+	if (!stored.present) return null;
+	const parsed = stored.value;
 	// Honest refusal (owner ruling 2026-10-10): a record stamped NEWER than
 	// this build (the downgrade scenario) reads as absent, never misparsed —
 	// the next read-modify-write must not rewrite what it doesn't understand.
@@ -77,18 +79,32 @@ function getChat(id: string): ChatRecord | null {
 }
 
 function listChats(): ChatSummary[] {
+	let files: string[];
 	try {
 		fs.mkdirSync(PATHS.chats, { recursive: true });
-		return fs
-			.readdirSync(PATHS.chats)
-			.filter((f) => f.endsWith(".json"))
-			.map((f) => getChat(f.slice(0, -5)))
+		files = fs.readdirSync(PATHS.chats).filter((f) => f.endsWith(".json"));
+	} catch (err) {
+		console.error(`[chats] cannot list ${PATHS.chats}:`, err);
+		return [];
+	}
+	return files
+		// One broken record must not blank the whole sidebar: skip it and
+		// say which file was skipped (getChat's strict read is for a direct
+		// open, where a silent absence would be a lie).
+		.map((f): ChatRecord | null => {
+			try {
+				return getChat(f.slice(0, -5));
+			} catch (err) {
+				console.error(`[chat ${f}] unreadable record skipped:`, err);
+				return null;
+			}
+		})
 			.filter((r): r is ChatRecord => r !== null)
 			.map(({ messages, tree, turns, extractions, ...summary }) => {
-				// Per-record isolation (Wave B): a record whose messages fail the
-				// projection (e.g. pre-Wave-B UIMessage-format scratch — the
-				// zero-back-compat wipe makes these "corrupt") must not blank the
-				// whole sidebar — same isolation getChat's per-file catch gives.
+		// Per-record isolation (Wave B): a record whose messages fail the
+		// projection (e.g. pre-Wave-B UIMessage-format scratch — the
+		// zero-back-compat wipe makes these "corrupt") must not blank the
+		// whole sidebar — same isolation the strict reader's per-file catch gives.
 				try {
 					return {
 						// turns and extractions stay out of the list payload (list =
@@ -115,9 +131,6 @@ function listChats(): ChatSummary[] {
 			})
 			.filter((s): s is ChatSummary => s !== null)
 			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-	} catch {
-		return [];
-	}
 }
 
 /** Persist the full native message list (the record IS the agent state —
