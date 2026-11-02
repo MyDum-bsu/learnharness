@@ -33,6 +33,8 @@ import {
 	writeSettingsRecord,
 } from "@/src/server";
 
+import { mobileRefusal } from "@/src/server/mobile-api.ts";
+
 export const dynamic = "force-dynamic";
 
 /** Re-join the catch-all segments into the mirror-layout path; null when
@@ -43,6 +45,8 @@ function segmentPathFrom(segments: string[]): string | null {
 }
 
 export async function PUT(request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
+	const refusal = mobileRefusal(request.headers, "edit system prompt overrides");
+	if (refusal) return refusal;
 	const { segment } = await ctx.params;
 	const path = segmentPathFrom(segment);
 	if (!path) return Response.json({ error: "invalid segment path" }, { status: 400 });
@@ -60,7 +64,9 @@ export async function PUT(request: Request, ctx: { params: Promise<{ segment: st
 	return Response.json({ path, text: body.text });
 }
 
-export async function DELETE(_request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
+export async function DELETE(request: Request, ctx: { params: Promise<{ segment: string[] }> }) {
+	const refusal = mobileRefusal(request.headers, "edit system prompt overrides");
+	if (refusal) return refusal;
 	const { segment } = await ctx.params;
 	const path = segmentPathFrom(segment);
 	if (!path) return Response.json({ error: "invalid segment path" }, { status: 400 });
