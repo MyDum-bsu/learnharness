@@ -440,6 +440,11 @@ export async function handleChatInput(
 		},
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
+	// The turn fuse's learner-facing bridge (turn-fuse wave, 2026-11-02):
+	// the stream registers its frame sender when the turn starts (runPiTurn
+	// binds it synchronously, before the run); a trip remembers the failure
+	// durably either way.
+	let fuseNotify: ((errorText: string) => void) | undefined;
 	const agentOpts: AgentBuildOptions = {
 		engine,
 		callPurpose,
@@ -454,6 +459,14 @@ export async function handleChatInput(
 		// point as the tool delta — the agent layer composes the system
 		// prompt fresh per turn, swapping in any enabled override segments.
 		promptSwitches: effective.agent.prompts,
+		// THE TURN FUSE (turn-fuse wave, 2026-11-02): at most one report per
+		// turn — the learner sees the exact blocker, the failed-turn notice
+		// is remembered, and settlement proceeds normally (partial
+		// transcript + usage persist).
+		onFuseTrip: (trip) => {
+			rememberTurnFailure(chatId, trip.blocker);
+			fuseNotify?.(trip.blocker);
+		},
 	};
 	// PRACTICE BRANCH (owner design, 2026-10-04): a kind:"practice"
 	// session builds the practitioner from turn 1 — no prober→teacher
@@ -554,6 +567,9 @@ export async function handleChatInput(
 			// turn's calls at the wire boundary, on the wire, in the record,
 			// and in the next turn's context alike.
 			usedToolCallIds: new Set(collectToolCallIds(merged)),
+			bindFuseSender: (sendTrip) => {
+				fuseNotify = sendTrip;
+			},
 			// Stream-level failures are provider/transport internals — masked,
 			// like the SDK defaults. Tool-input validation messages never
 			// route through here: they ride the error-result path and reach the

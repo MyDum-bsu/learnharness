@@ -24,6 +24,7 @@ import { QUESTION_TOOLS, type EnabledTools } from "../core/pending.ts";
 import { toLlmMessages, nativeInputCause, PRACTICE_PROBLEM_TOOL } from "../core/native-messages.ts";
 import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
 import { usageWasAdmitted } from "./subscription-request-cycle.ts";
+import { createTurnFuse, DEFAULT_MAX_WALL_CLOCK_MS, type FuseTrip } from "./turn-fuse.ts";
 
 /**
  * The two teaching-side agents (docs/probe-teach-split.md): the PROBER and
@@ -130,6 +131,11 @@ export interface AgentBuildOptions {
 	 *  <chatId>.jsonl via providerEventObserver — the GLM-truncation /
 	 *  DeepSeek-id incident layer. Absent or env-off → no observer. */
 	chatId?: string;
+	/** The turn fuse report (turn-fuse wave, 2026-11-02): fired AT MOST once
+	 *  per built agent, on the first trip (tool calls or wall clock). The
+	 *  handler turns it into the learner-facing blocker notice; the run
+	 *  itself still settles normally (partial transcript + usage persist). */
+	onFuseTrip?: (trip: FuseTrip) => void;
 }
 
 /**
@@ -191,6 +197,17 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	// the normal no-observer path (tests, env-off).
 	const providerEvents = opts.chatId ? providerEventObserver(opts.chatId, kind) : undefined;
 	const seenInputs = new Set((opts.messages ?? []).map((m) => (m as { id?: string }).id).filter(Boolean));
+	// THE TURN FUSE (turn-fuse wave, 2026-11-02): a fuse, not a limit — the
+	// owner ruling 2026-09-25 (no maxTurns net) stands. Tripping ends the
+	// run the normal way and reports the exact blocker once, while
+	// settlement persists the partial transcript and usage as usual.
+	const fuse = createTurnFuse();
+	let fuseReported = false;
+	const reportFuse = (trip: FuseTrip) => {
+		if (fuseReported) return;
+		fuseReported = true;
+		opts.onFuseTrip?.(trip);
+	};
 	const agent = new Agent({
 		identity: APP_IDENTITY,
 		sessionId: opts.chatId,
@@ -219,7 +236,18 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 		// exits BEFORE the steering poll — the parked-marker stranding our
 		// Wave C registerLiveAgent-before-runPiTurn design depends on.
 		// undefined preserves normal scheduling (the old boolean false).
-		finishTurn: (turn) => (stopper(turn) ? { action: "end" } : undefined),
+		finishTurn: (turn) => {
+			// The question stop hook has priority: a cleanly posed question
+			// ends the run and never reports a fuse trip (spec invariant).
+			if (stopper(turn)) return { action: "end" };
+			const toolCalls = turn.message.content.filter((c) => c.type === "toolCall").length;
+			const trip = fuse.observeToolCalls(toolCalls);
+			if (trip) {
+				reportFuse(trip);
+				return { action: "end" };
+			}
+			return undefined;
+		},
 		// Wave C (2026-09-26, owner correction same day): markers handed to a
 		// live run drain from pi's STEERING queue — the lesson loop is one
 		// continuous teach→quiz→teach run, so delivery must inject at turn
@@ -264,6 +292,21 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			}
 		});
 	}
+	// Wall-clock leg of the fuse: one unref'd timer for the full budget
+	// (the fuse's own clock started just above). On fire it settles the
+	// trip and aborts the run — no exception out of the middle of the
+	// turn. Cleared at agent_end: a normal lesson leaves no dangling timer.
+	const wallClockTimer = setTimeout(() => {
+		const trip = fuse.check();
+		if (trip) {
+			reportFuse(trip);
+			agent.abort();
+		}
+	}, DEFAULT_MAX_WALL_CLOCK_MS);
+	wallClockTimer.unref();
+	agent.subscribe((event: AgentEvent) => {
+		if (event.type === "agent_end") clearTimeout(wallClockTimer);
+	});
 	return agent;
 }
 
