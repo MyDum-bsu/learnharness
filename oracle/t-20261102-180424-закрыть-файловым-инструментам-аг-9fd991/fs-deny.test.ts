@@ -22,8 +22,11 @@ import {
 	FileAccessDeniedError,
 	redactSecrets,
 	type DenyScope,
-} from "../../../../src/agent/tools/fs-deny.ts";
-import { capOutput } from "../../../../src/agent/tools/fs-shared.ts";
+	// Two ups from oracle/<id>/ reach the repository root in every layout the
+	// oracle runs in (repo-root checkout, integration tree, task worktree) —
+	// the original four ups only resolved in the first of them.
+} from "../../src/agent/tools/fs-deny.ts";
+import { capOutput } from "../../src/agent/tools/fs-shared.ts";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const TOOLS_DIR = path.join(REPO_ROOT, "src", "agent", "tools");

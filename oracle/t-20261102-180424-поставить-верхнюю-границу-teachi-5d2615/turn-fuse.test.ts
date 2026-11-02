@@ -23,14 +23,16 @@ import {
 	fauxToolCall,
 	type FauxResponseStep,
 } from "@earendil-works/pi-ai";
-import { createTeacherAgent } from "../../../../src/agent/teacher-agent.ts";
-import type { PiEngine } from "../../../../src/agent/models.ts";
+// Two ups from oracle/<id>/ reach the repository root in every layout the
+// oracle runs in (repo-root checkout, integration tree, task worktree).
+import { createTeacherAgent } from "../../src/agent/teacher-agent.ts";
+import type { PiEngine } from "../../src/agent/models.ts";
 import {
 	DEFAULT_MAX_TOOL_CALLS,
 	DEFAULT_MAX_WALL_CLOCK_MS,
 	createTurnFuse,
 	type FuseTrip,
-} from "../../../../src/agent/turn-fuse.ts";
+} from "../../src/agent/turn-fuse.ts";
 
 const LIMIT = DEFAULT_MAX_TOOL_CALLS;
 const DEADLINE = DEFAULT_MAX_WALL_CLOCK_MS;

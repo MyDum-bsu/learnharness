@@ -117,7 +117,7 @@ test("assertUrlPolicy allows only external https", () => {
 		"file:///etc/passwd",
 		"ftp://example.com/x",
 	]) {
-		assert.throws(() => assertUrlPolicy(url), undefined, `${url} must be rejected by policy`);
+		assert.throws(() => assertUrlPolicy(url), Error, `${url} must be rejected by policy`);
 	}
 });
 

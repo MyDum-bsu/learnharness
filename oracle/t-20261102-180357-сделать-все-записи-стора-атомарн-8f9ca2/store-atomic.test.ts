@@ -41,8 +41,8 @@ const CHILD = path.join(import.meta.dirname, "crash-child.ts");
 // The data directory seam is read once, at first import of config.ts, so it is
 // fixed here — before any store module is loaded by a test body.
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "lh-store-atomic-"));
-process.env.NODE_ENV = "test";
-process.env.LH_DATA_DIR = DATA_DIR;
+// @types/node types NODE_ENV readonly — the env write goes around the type.
+Object.assign(process.env, { NODE_ENV: "test", LH_DATA_DIR: DATA_DIR });
 
 type AnyApi = Record<string, any>;
 

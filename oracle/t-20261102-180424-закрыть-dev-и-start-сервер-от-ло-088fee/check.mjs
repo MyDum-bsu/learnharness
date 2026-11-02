@@ -1,11 +1,20 @@
 #!/usr/bin/env node
 // Oracle for t-20261102-180424: dev/start must bind loopback, standalone documented with HOSTNAME.
 // Fails on the unfixed repository, passes only after package.json + docs/development.md are changed.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(fileURLToPath(new URL("../../../../", import.meta.url)));
+// Walk up to the repository root (package.json + docs/development.md): the
+// oracle runs from a repo-root checkout, the integration tree or a task
+// worktree — a fixed climb only fits one of those depths.
+let repoRoot = dirname(fileURLToPath(import.meta.url));
+for (;;) {
+	if (existsSync(resolve(repoRoot, "package.json")) && existsSync(resolve(repoRoot, "docs", "development.md"))) break;
+	const parent = dirname(repoRoot);
+	if (parent === repoRoot) throw new Error(`oracle: repository root (package.json + docs/development.md) not found above ${import.meta.url}`);
+	repoRoot = parent;
+}
 
 const failures = [];
 const fail = (msg) => failures.push(msg);
