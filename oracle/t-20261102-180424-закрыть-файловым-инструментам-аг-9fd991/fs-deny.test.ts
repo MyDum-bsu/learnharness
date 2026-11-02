@@ -28,7 +28,9 @@ import {
 } from "../../src/agent/tools/fs-deny.ts";
 import { capOutput } from "../../src/agent/tools/fs-shared.ts";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+// Two ups from oracle/<id>/ reach the repository root in every layout the
+// oracle runs in (repo-root checkout, integration tree, task worktree).
+const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const TOOLS_DIR = path.join(REPO_ROOT, "src", "agent", "tools");
 
 type Fixture = DenyScope & { root: string; linkFile: string; linkDir: string };
