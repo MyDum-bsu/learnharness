@@ -25,7 +25,8 @@ space = "learn-harness"
 keep_workspace = true
 
 [factory]
-auto_approve = false
+auto_approve = true
+autonomy = "yolo"
 fast_max_paths = 1
 fast_max_oracle = 2
 fast_max_dod_chars = 1200
