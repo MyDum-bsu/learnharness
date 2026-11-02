@@ -1,0 +1,56 @@
+# stigmergy project config
+[project]
+name = "learn-harness"
+base = "dev"
+protected = ["main"]
+wip = 1
+
+[workspace]
+provider = "git"
+root = ".factory/worktrees"
+
+[gate]
+timeout_seconds = 1800
+network = false
+
+[sandbox]
+engine = "bwrap"
+episode_network = "proxy"
+gate_network = "none"
+
+[runner]
+kind = "herdr-app"
+agent = "pi"
+space = "learn-harness"
+keep_workspace = true
+
+[factory]
+auto_approve = false
+fast_max_paths = 1
+fast_max_oracle = 2
+fast_max_dod_chars = 1200
+
+[models]
+default = ""
+worker = ""
+planner = ""
+critic = ""
+lead = ""
+bench_command = ""
+
+[notify]
+telegram_token_env = "STG_TELEGRAM_TOKEN"
+telegram_chat_id = ""
+webhook_url = ""
+
+[visual]
+command = ""
+
+[github]
+repo = "MyDum-bsu/learnharness"
+label = "stigmergy"
+
+[risk]
+low = "auto"
+medium = "auto"
+high = "human"
