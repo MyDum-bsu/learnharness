@@ -7,10 +7,22 @@
  * Prints "writing <n>" before and "written <n>" after every save so the
  * parent can time the kill inside the write window.
  */
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const ROOT = path.resolve(import.meta.dirname, "../../../..");
+// Repository root by marker (package.json + src/store), not by a fixed climb:
+// the oracle tree may sit at different depths under .factory.
+function findRepoRoot(start: string): string {
+	let dir = start;
+	for (;;) {
+		if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "src/store"))) return dir;
+		const parent = path.dirname(dir);
+		if (parent === dir) throw new Error(`repository root (package.json + src/store) not found above ${start}`);
+		dir = parent;
+	}
+}
+const ROOT = findRepoRoot(import.meta.dirname);
 const CHAT_ID = process.env.CRASH_CHAT_ID;
 const PASS = Number(process.env.CRASH_PASS_MESSAGES ?? "2500");
 

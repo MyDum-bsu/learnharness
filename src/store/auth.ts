@@ -16,11 +16,11 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import { AUTH_FILE } from "../../config.ts";
 import type { AuthStore } from "../core/ports.ts";
 import { CUSTOM_PROVIDER } from "../core/auth-keys.ts";
 import { CUSTOM_AUTH_BINDING, parseCustomAuthBinding, type CustomAuthBinding } from "../core/custom-provider-auth.ts";
+import { writeFileAtomic } from "./atomic-write.ts";
 
 /** The flat string→string map, or {} for absent/corrupt/non-object. */
 function readMap(): Record<string, string> {
@@ -35,17 +35,12 @@ function readMap(): Record<string, string> {
 	}
 }
 
-/** Write the map atomically at mode 0600: a partial write must never
- *  leave a 0644 file (secrets) or a truncated JSON (looks like "no keys").
- *  tmp-in-same-dir + rename keeps the swap atomic; chmod BEFORE the
- *  rename so the mode never exists relaxed on the final path. */
+/** Write the map atomically at mode 0600 (the store helper's temp+fsync+
+ *  rename): a partial write must never leave a 0644 file (secrets) or a
+ *  truncated JSON (looks like "no keys"). The mode is applied to the temp
+ *  BEFORE the rename, so the target path never exists relaxed. */
 function writeMap(map: Record<string, unknown>): void {
-	const dir = path.dirname(AUTH_FILE);
-	fs.mkdirSync(dir, { recursive: true });
-	const tmp = path.join(dir, `.auth.json.tmp-${process.pid}`);
-	fs.writeFileSync(tmp, `${JSON.stringify(map, null, "\t")}\n`, { mode: 0o600 });
-	fs.chmodSync(tmp, 0o600); // umask may have relaxed the create mode
-	fs.renameSync(tmp, AUTH_FILE);
+	writeFileAtomic(AUTH_FILE, `${JSON.stringify(map, null, "\t")}\n`, { mode: 0o600 });
 }
 
 export const authStore: AuthStore = {

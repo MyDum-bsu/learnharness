@@ -1,11 +1,10 @@
 import fs from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { SOURCE_ORGANIZATION_FILE } from "../../config.ts";
 import { emptySourceOrganization, parseSourceOrganization } from "../core/source-organization.ts";
 import type { SourceOrganizationStore } from "../core/ports.ts";
 import { emit } from "../core/events.ts";
 import { assertGraphFormat, ensureGraphFormat } from "./graph-format.ts";
+import { writeFileAtomic } from "./atomic-write.ts";
 
 export const sourceOrganizationStore: SourceOrganizationStore = {
 	read() {
@@ -21,13 +20,8 @@ export const sourceOrganizationStore: SourceOrganizationStore = {
 	write(state) {
 		assertGraphFormat();
 		const valid = parseSourceOrganization(state);
-		fs.mkdirSync(path.dirname(SOURCE_ORGANIZATION_FILE), { recursive: true });
 		ensureGraphFormat();
-		const tmp = `${SOURCE_ORGANIZATION_FILE}.${randomUUID()}.tmp`;
-		try {
-			fs.writeFileSync(tmp, JSON.stringify(valid, null, "\t") + "\n", "utf8");
-			fs.renameSync(tmp, SOURCE_ORGANIZATION_FILE);
-		} finally { fs.rmSync(tmp, { force: true }); }
+		writeFileAtomic(SOURCE_ORGANIZATION_FILE, JSON.stringify(valid, null, "\t") + "\n");
 		emit("sources-changed", {});
 	},
 };

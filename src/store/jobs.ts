@@ -15,6 +15,8 @@ import { emit } from "../core/events.ts";
 import type { JobStore } from "../core/ports.ts";
 import type { CreateJobInit, JobPatch } from "../core/ports.ts";
 import type { JobRecord } from "../core/contracts.ts";
+import { writeFileAtomic } from "./atomic-write.ts";
+import { readJsonFile } from "./read-json.ts";
 
 /** Background jobs (data/jobs). Not in config.ts PATHS (orchestrator-owned). */
 const JOBS_DIR = path.join(PATHS.data, "jobs");
@@ -42,17 +44,17 @@ function createJob(init: CreateJobInit): JobRecord {
 		updatedAt: now,
 	};
 	fs.mkdirSync(JOBS_DIR, { recursive: true });
-	fs.writeFileSync(jobFile(record.id), JSON.stringify(record, null, "\t"), "utf-8");
+	writeFileAtomic(jobFile(record.id), JSON.stringify(record, null, "\t"));
 	emit("jobs-changed", { chatId: init.chatId });
 	return record;
 }
 
+/** Absent record → null. A record that exists but does not parse THROWS
+ *  naming its file — the runner must not treat a broken record as "no such
+ *  job" and dispatch a duplicate. */
 function getJob(id: string): JobRecord | null {
-	try {
-		return JSON.parse(fs.readFileSync(jobFile(id), "utf-8")) as JobRecord;
-	} catch {
-		return null;
-	}
+	const stored = readJsonFile(jobFile(id));
+	return stored.present ? (stored.value as JobRecord) : null;
 }
 
 /** Merge a partial patch into the record (identity fields are immutable).
@@ -62,7 +64,7 @@ function updateJob(id: string, patch: JobPatch): JobRecord | null {
 	const record = getJob(id);
 	if (!record) return null;
 	const next: JobRecord = { ...record, ...patch, updatedAt: patch.updatedAt ?? new Date().toISOString() };
-	fs.writeFileSync(jobFile(id), JSON.stringify(next, null, "\t"), "utf-8");
+	writeFileAtomic(jobFile(id), JSON.stringify(next, null, "\t"));
 	// EVERY write, not just status flips: progress-line updates must reach
 	// the dispatch cards (the view debounces the fetch bursts). A missing id
 	// wrote nothing and stays silent.
@@ -70,19 +72,30 @@ function updateJob(id: string, patch: JobPatch): JobRecord | null {
 	return next;
 }
 
-/** All jobs for a chat, newest activity first. */
+/** All jobs for a chat, newest activity first. One unreadable record is
+ *  logged and skipped — a single broken file must not hide the chat's
+ *  other jobs. */
 function listJobs(chatId: string): JobRecord[] {
+	let files: string[];
 	try {
 		fs.mkdirSync(JOBS_DIR, { recursive: true });
-		return fs
-			.readdirSync(JOBS_DIR)
-			.filter((f) => f.endsWith(".json"))
-			.map((f) => getJob(f.slice(0, -5)))
-			.filter((j): j is JobRecord => j !== null && j.chatId === chatId)
-			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-	} catch {
+		files = fs.readdirSync(JOBS_DIR).filter((f) => f.endsWith(".json"));
+	} catch (err) {
+		console.error(`[jobs] cannot list ${JOBS_DIR}:`, err);
 		return [];
 	}
+	const jobs: JobRecord[] = [];
+	for (const f of files) {
+		let job: JobRecord | null;
+		try {
+			job = getJob(f.slice(0, -5));
+		} catch (err) {
+			console.error(`[job ${f}] unreadable record skipped:`, err);
+			continue;
+		}
+		if (job && job.chatId === chatId) jobs.push(job);
+	}
+	return jobs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /** The job fulfilling a given tool part, if any (spawn-hook dedup). */

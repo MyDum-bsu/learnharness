@@ -22,7 +22,20 @@ import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const ROOT = path.resolve(import.meta.dirname, "../../../..");
+/** Walk up to the repository root (package.json + src/store): the oracle
+ *  runs from a task workspace, a gate checkout or an integration tree, and
+ *  those sit at different depths under .factory — a fixed climb cannot fit
+ *  all three. */
+function findRepoRoot(start: string): string {
+	let dir = start;
+	for (;;) {
+		if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "src/store"))) return dir;
+		const parent = path.dirname(dir);
+		if (parent === dir) throw new Error(`repository root (package.json + src/store) not found above ${start}`);
+		dir = parent;
+	}
+}
+const ROOT = findRepoRoot(import.meta.dirname);
 const CHILD = path.join(import.meta.dirname, "crash-child.ts");
 
 // The data directory seam is read once, at first import of config.ts, so it is
