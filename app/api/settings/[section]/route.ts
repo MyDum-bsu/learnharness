@@ -46,6 +46,8 @@ import {
 	type SettingsBodyResult,
 } from "@/src/server";
 
+import { MOBILE_SAFE_SETTINGS_SECTIONS, mobileRefusal } from "@/src/server/mobile-api.ts";
+
 export const dynamic = "force-dynamic";
 
 /** One parser, result type erased to the common envelope. */
@@ -53,6 +55,13 @@ type AnySectionParser = (body: unknown) => SettingsBodyResult<unknown>;
 
 export async function PUT(request: Request, ctx: { params: Promise<{ section: string }> }) {
 	const { section } = await ctx.params;
+	// A paired phone may tune how the app LOOKS and behaves locally; it may
+	// not rewrite provider/model slots, tool authority, prompt switches or
+	// server-wide settings (mobile-api wave, 2026-11-02).
+	if (!MOBILE_SAFE_SETTINGS_SECTIONS.has(section)) {
+		const refusal = mobileRefusal(request.headers, `change the "${section}" settings`);
+		if (refusal) return refusal;
+	}
 	const parser = (SETTINGS_SECTIONS as Record<string, AnySectionParser>)[section];
 	if (!parser) {
 		return Response.json(

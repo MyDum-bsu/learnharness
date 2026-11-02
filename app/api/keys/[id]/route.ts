@@ -17,12 +17,15 @@
  */
 import { isWritableAuthKey } from "@/src/server";
 import { announceSettingsChanged, deleteKey, saveKey } from "@/src/server";
+import { mobileRefusal } from "@/src/server/mobile-api.ts";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PUT(req: Request, { params }: Params) {
+	const refusal = mobileRefusal(req.headers, "change provider keys");
+	if (refusal) return refusal;
 	const { id } = await params;
 	if (!isWritableAuthKey(id)) {
 		return Response.json({ error: `unknown key "${id}"` }, { status: 404 });
@@ -42,7 +45,9 @@ export async function PUT(req: Request, { params }: Params) {
 	return Response.json({ status: result.status });
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
+	const refusal = mobileRefusal(request.headers, "change provider keys");
+	if (refusal) return refusal;
 	const { id } = await params;
 	if (!isWritableAuthKey(id)) {
 		return Response.json({ error: `unknown key "${id}"` }, { status: 404 });

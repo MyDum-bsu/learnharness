@@ -18,9 +18,12 @@
  * (env always wins).
  */
 import { keyStatuses, providerKeyList } from "@/src/server";
+import { mobileRefusal } from "@/src/server/mobile-api.ts";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request?: Request) {
+	const refusal = mobileRefusal(request?.headers ?? new Headers(), "read provider keys");
+	if (refusal) return refusal;
 	return Response.json({ keys: keyStatuses(), providers: providerKeyList() });
 }

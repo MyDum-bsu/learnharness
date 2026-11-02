@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { desktopAPIAuthorized } from "./src/server/desktop-access.ts";
 import { appsOnlyAllowed, appsOnlyRefusal, isPublicPath, remoteRequestAuthorized, serverModeEnabled } from "./src/server/remote-access.ts";
+import { corsHeadersFor } from "./src/server/mobile-api.ts";
 
 /** Applies to every API method, including SSE and spending/settings routes.
  * No public callback or worker bypass: internal jobs call server functions,
@@ -12,6 +13,24 @@ import { appsOnlyAllowed, appsOnlyRefusal, isPublicPath, remoteRequestAuthorized
  * iPhone app is refused before sign-in. Without server mode, pages pass
  * straight through as before. */
 export function proxy(request: NextRequest) {
+	// CORS for declared origins (LH_CORS_ORIGINS — the Expo WEB build;
+	// mobile-api wave, 2026-11-02). Preflights carry no credentials and are
+	// answered before any auth gate; credentialed requests keep the gate and
+	// receive the headers on whatever response comes back (401/403 included,
+	// so the browser can read the error).
+	const cors = corsHeadersFor(request.headers.get("origin"));
+	// Only a DECLARED CORS preflight skips the gate — it carries no
+	// credentials by design. Any other OPTIONS keeps the fail-closed path.
+	if (request.method === "OPTIONS" && cors) return new NextResponse(null, { status: 204, headers: cors });
+	const response = gate(request);
+	if (cors) for (const [name, value] of Object.entries(cors)) response.headers.set(name, value);
+	return response;
+}
+
+/** The auth/policy gate, unchanged by CORS: apps-only, server-mode sign-in,
+ * then the desktop API capability. (Plain Response — appsOnlyRefusal
+ * carries an HTML body.) */
+function gate(request: NextRequest): Response {
 	const { pathname, search } = request.nextUrl;
 	const api = pathname.startsWith("/api/");
 	if (!appsOnlyAllowed(request.headers)) return appsOnlyRefusal(api);
