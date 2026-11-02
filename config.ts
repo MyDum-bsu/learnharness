@@ -114,6 +114,14 @@ export const GRAPH_FORMAT_FILE = path.join(PATHS.graph, "format.json");
 export const SETTINGS_FILE = path.join(DATA_ROOT, "settings.json");
 
 /**
+ * THE DEVICE REGISTRY (pairing wave, 2026-11-02): paired devices' records —
+ * name, scope, TOKEN HASH (never the token), expiry, revocation. Written
+ * through the atomic-write discipline like every other store record; the
+ * bearer tokens themselves exist only in the pairing response.
+ */
+export const DEVICES_FILE = path.join(DATA_ROOT, "devices.json");
+
+/**
  * User prompt-override files (settings-storage wave, 2026-09-19): the
  * per-segment system-prompt overrides mirroring the SOURCE layout
  * (src/agent/prompts/) — the shared base as prompts/system-prompt.md,

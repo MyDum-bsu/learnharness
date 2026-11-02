@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { deviceForToken } from "../store/devices.ts";
 
 /**
  * SERVER MODE (self-hosting): one LearnHarness server, many devices. Setting
@@ -66,7 +67,20 @@ function cookieValue(headers: Headers, name: string): string | undefined {
 /** True when the request carries the configured API token (scripts, non-browser clients). */
 export function bearerAuthorized(headers: Headers, env: Env = process.env): boolean {
 	const bearer = headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-	return !!bearer && !!env.LH_API_TOKEN && env.LH_API_TOKEN.length >= 32 && sameSecret(bearer, env.LH_API_TOKEN);
+	if (!bearer) return false;
+	if (!!env.LH_API_TOKEN && env.LH_API_TOKEN.length >= 32 && sameSecret(bearer, env.LH_API_TOKEN)) return true;
+	// Paired devices (pairing wave, 2026-11-02): the registry validates the
+	// token by hash and dies on revoked/expired devices immediately.
+	return !!deviceForToken(bearer);
+}
+
+/** The device behind the request, when it authenticated with a paired
+ *  device token (scope gates live at the routes; p1-3 wires mobile limits). */
+export function deviceScope(headers: Headers): "admin" | "mobile" | undefined {
+	const bearer = headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+	if (!bearer) return undefined;
+	if (bearer.startsWith("lhdev_")) return deviceForToken(bearer)?.scope;
+	return undefined;
 }
 
 /** True when server mode is off, or the request carries a valid session or API token. */
@@ -74,6 +88,18 @@ export function remoteRequestAuthorized(headers: Headers, env: Env = process.env
 	if (!serverModeEnabled(env)) return true;
 	if (sessionTokenValid(cookieValue(headers, SESSION_COOKIE), env, now)) return true;
 	return bearerAuthorized(headers, env);
+}
+
+/** Device-management access (pairing wave, 2026-11-02): the owner's session,
+ *  the server API token, or a paired device with the ADMIN scope. Mobile-
+ *  scope devices are NOT admins — they can never mint pairings, list
+ *  devices, or revoke. Server mode off = local operator = the owner. */
+export function adminAuthorized(headers: Headers, env: Env = process.env, now = Date.now()): boolean {
+	if (!serverModeEnabled(env)) return true;
+	if (sessionTokenValid(cookieValue(headers, SESSION_COOKIE), env, now)) return true;
+	const bearer = headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+	if (!!bearer && !!env.LH_API_TOKEN && env.LH_API_TOKEN.length >= 32 && sameSecret(bearer, env.LH_API_TOKEN)) return true;
+	return deviceScope(headers) === "admin";
 }
 
 // ─── Apps only ────────────────────────────────────────────────────────────
@@ -134,31 +160,47 @@ export function clearedSessionCookieHeader(): string {
 }
 
 // ─── Login throttling ─────────────────────────────────────────────────────
-// In-memory, per client address: 10 failures per 15 minutes, then refuse
-// until the window passes. Single-process server, so a Map is the truth.
+// In-memory: 10 failures per 15 minutes per client, then refuse until the
+// window passes. Single-process server, so a Map is the truth.
+//
+// x-forwarded-for is NOT trusted blindly (pairing wave, 2026-11-02): a
+// directly exposed server sees attacker-chosen XFF values, so per-address
+// throttling only applies when the operator declares a trusted proxy
+// (LH_TRUST_PROXY=1, docs/self-hosting.md). Directly exposed servers
+// throttle on ONE global bucket with a wider cap — minting fresh fake
+// addresses no longer resets the budget, at the cost of a shared window
+// for everyone behind one address.
 
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS = 10;
+const DIRECT_MAX_FAILS = 30;
 const failures = new Map<string, { count: number; since: number }>();
 
 export function clientAddress(headers: Headers): string {
 	return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip") || "local";
 }
 
-export function loginThrottled(address: string, now = Date.now()): boolean {
-	const entry = failures.get(address);
-	if (!entry || now - entry.since > FAIL_WINDOW_MS) return false;
-	return entry.count >= MAX_FAILS;
+/** The throttle bucket for a request: the real client address behind a
+ *  declared proxy, one global bucket otherwise. */
+export function throttleKey(headers: Headers, env: Env = process.env): { key: string; max: number } {
+	if (env.LH_TRUST_PROXY === "1") return { key: clientAddress(headers), max: MAX_FAILS };
+	return { key: "direct", max: DIRECT_MAX_FAILS };
 }
 
-export function recordLoginFailure(address: string, now = Date.now()): void {
-	const entry = failures.get(address);
-	if (!entry || now - entry.since > FAIL_WINDOW_MS) failures.set(address, { count: 1, since: now });
+export function loginThrottled(key: string, max = MAX_FAILS, now = Date.now()): boolean {
+	const entry = failures.get(key);
+	if (!entry || now - entry.since > FAIL_WINDOW_MS) return false;
+	return entry.count >= max;
+}
+
+export function recordLoginFailure(key: string, now = Date.now()): void {
+	const entry = failures.get(key);
+	if (!entry || now - entry.since > FAIL_WINDOW_MS) failures.set(key, { count: 1, since: now });
 	else entry.count++;
 }
 
-export function clearLoginFailures(address: string): void {
-	failures.delete(address);
+export function clearLoginFailures(key: string): void {
+	failures.delete(key);
 }
 
 // ─── HTTP handlers (the routes stay thin wrappers) ────────────────────────
@@ -169,16 +211,16 @@ function redirect(location: string, extra: Record<string, string> = {}): Respons
 
 export async function loginResponse(request: Request): Promise<Response> {
 	if (!serverModeEnabled()) return Response.json({ error: "Server mode is off (LH_SERVER_PASSWORD is not set)." }, { status: 404 });
-	const address = clientAddress(request.headers);
+	const throttle = throttleKey(request.headers);
 	const form = await request.formData().catch(() => null);
 	const next = safeNextPath(form?.get("next")?.toString());
 	const back = (error: string) => `/login?error=${error}&next=${encodeURIComponent(next)}`;
-	if (loginThrottled(address)) return redirect(back("throttled"));
+	if (loginThrottled(throttle.key, throttle.max)) return redirect(back("throttled"));
 	if (!passwordMatches(form?.get("password")?.toString() ?? "")) {
-		recordLoginFailure(address);
+		recordLoginFailure(throttle.key);
 		return redirect(back("invalid"));
 	}
-	clearLoginFailures(address);
+	clearLoginFailures(throttle.key);
 	return redirect(next, { "Set-Cookie": sessionCookieHeader(mintSessionToken(), request.headers) });
 }
 
