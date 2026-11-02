@@ -1,0 +1,56 @@
+diff --git a/src/agent/turn-fuse.ts b/src/agent/turn-fuse.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/agent/turn-fuse.ts
+@@ -0,0 +1,52 @@
++/**
++ * NEGATIVE-CONTROL DECOY — the degenerate "fuse that never fires".
++ *
++ * Applies to a CLEAN base tree (the file does not exist there). With this file
++ * present the oracle must FAIL: a teaching turn can still burn tokens forever.
++ */
++
++export const DEFAULT_MAX_TOOL_CALLS = 100;
++export const DEFAULT_MAX_WALL_CLOCK_MS = 30 * 60_000;
++
++export type FuseDimension = "tool_calls" | "wall_clock";
++
++export interface FuseTrip {
++	dimension: FuseDimension;
++	observed: number;
++	limit: number;
++	blocker: string;
++}
++
++export interface TurnFuse {
++	observeToolCalls(count?: number): FuseTrip | undefined;
++	check(): FuseTrip | undefined;
++	readonly toolCalls: number;
++	readonly tripped: FuseTrip | undefined;
++}
++
++export function createTurnFuse(opts: {
++	maxToolCalls?: number;
++	maxWallClockMs?: number;
++	startedAt?: number;
++	now?: () => number;
++} = {}): TurnFuse {
++	void opts;
++	let calls = 0;
++	return {
++		observeToolCalls(count = 1): FuseTrip | undefined {
++			calls += count;
++			return undefined;
++		},
++		check(): FuseTrip | undefined {
++			return undefined;
++		},
++		get toolCalls(): number {
++			return calls;
++		},
++		get tripped(): FuseTrip | undefined {
++			return undefined;
++		},
++	};
++}
