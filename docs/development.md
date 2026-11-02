@@ -55,6 +55,8 @@ Sign-in opens a tab in the browser that initiated it; allow that tab if blocked.
 
 This is a **trusted local/shared developer-server mode**, not multi-user hosting. Same-origin JSON/custom-header checks and short-lived, origin-bound, one-use browser-opening actions prevent ordinary cross-origin browser controls. They are **not user authentication or DNS-rebinding protection**. Subscription support does not change Next's listening/LAN behavior. Do not expose the server to untrusted users or the public Internet without an independent access/host gate. Remote ChatGPT callback routing, per-user isolation and credential import are not implemented.
 
+Both `npm run dev` and `npm start` bind to `127.0.0.1` (`-H 127.0.0.1`), so the server is not reachable from the local network by default. A standalone server (`node .next/standalone/server.js`) must be started with `HOSTNAME=127.0.0.1` for the same loopback binding.
+
 ## Source map
 
 | Work area | Start with |
