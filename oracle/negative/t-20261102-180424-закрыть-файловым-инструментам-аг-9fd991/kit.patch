@@ -1,0 +1,34 @@
+--- /dev/null
++++ b/src/agent/tools/fs-deny.ts
+@@ -0,0 +1,31 @@
++/** Negative-control kit: a permissive guard. The oracle must FAIL while this file is in place. */
++
++export interface DenyScope {
++	home: string;
++	dataDir: string;
++	authFile: string;
++	extraDirs: string[];
++}
++
++export interface AccessVerdict {
++	allowed: boolean;
++	reason?: string;
++}
++
++export function defaultDenyScope(): DenyScope {
++	return { home: "", dataDir: "", authFile: "", extraDirs: [] };
++}
++
++export async function checkPathAccess(): Promise<AccessVerdict> {
++	return { allowed: true };
++}
++
++export async function assertPathAllowed(): Promise<void> {}
++
++export class FileAccessDeniedError extends Error {
++	readonly name = "FileAccessDeniedError";
++}
++
++export function redactSecrets(text: string): string {
++	return text;
++}
