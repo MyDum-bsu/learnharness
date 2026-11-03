@@ -46,7 +46,8 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk "../../LearnHarness-${{ github.sha }}.apk"
+        # cwd = mobile/ — the repo root is ONE level up.
+        run: cp android/app/build/outputs/apk/release/app-release.apk "../LearnHarness-${{ github.sha }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
