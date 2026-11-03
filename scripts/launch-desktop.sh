@@ -30,7 +30,13 @@ if ! up; then
 	[ -d "${REPO}/.next/standalone/public" ] || cp -r "${REPO}/public" "${REPO}/.next/standalone/public"
 	(
 		cd "${REPO}/.next/standalone" &&
-			HOSTNAME=127.0.0.1 PORT="${PORT}" NODE_ENV=production nohup node server.js >"${LOG_FILE}" 2>&1 &
+			# THE DATA SEAM (desktop-menu fix, 2026-11-04): pinned explicitly —
+			# without it the standalone server resolves its own build-tree data/
+			# and the app shows an empty (or traced-junk) state instead of the
+			# learner's real sessions, graph and keys.
+			HOSTNAME=127.0.0.1 PORT="${PORT}" NODE_ENV=production \
+				LH_DATA_DIR="${REPO}/data" LH_AUTH_FILE="${REPO}/auth.json" \
+				nohup node server.js >"${LOG_FILE}" 2>&1 &
 		echo $! >"${PID_FILE}"
 	)
 	STARTED=1
