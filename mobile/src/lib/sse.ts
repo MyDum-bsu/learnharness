@@ -81,6 +81,26 @@ function createUtf8Decoder() {
 	};
 }
 
+/** UTF-8 encoder (Hermes-safe: TextEncoder is not guaranteed in RN). */
+function encodeUtf8(text: string): Uint8Array {
+	const bytes: number[] = [];
+	for (let i = 0; i < text.length; i++) {
+		let code = text.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+			const low = text.charCodeAt(i + 1);
+			if (low >= 0xdc00 && low <= 0xdfff) {
+				code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+				i += 1;
+			}
+		}
+		if (code < 0x80) bytes.push(code);
+		else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+		else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+		else bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+	}
+	return new Uint8Array(bytes);
+}
+
 export function createSseParser(): SseParser {
 	const decode = createUtf8Decoder();
 	let buffer = "";
@@ -239,7 +259,7 @@ export function createXhrSseClient(options: SseClientOptions): SseClient {
 						if (text.length <= seen) return;
 						const chunk = text.slice(seen);
 						seen = text.length;
-						for (const event of parser.feed(new TextEncoder().encode(chunk))) {
+						for (const event of parser.feed(encodeUtf8(chunk))) {
 							if (event.id !== undefined) lastEventId = event.id;
 							options.onEvent(event);
 							if (closed) return;
@@ -248,7 +268,7 @@ export function createXhrSseClient(options: SseClientOptions): SseClient {
 					request.onload = () => {
 						const text = request.responseText ?? "";
 						if (text.length > seen) {
-							for (const event of parser.feed(new TextEncoder().encode(text.slice(seen)))) {
+							for (const event of parser.feed(encodeUtf8(text.slice(seen)))) {
 								if (event.id !== undefined) lastEventId = event.id;
 								options.onEvent(event);
 							}
