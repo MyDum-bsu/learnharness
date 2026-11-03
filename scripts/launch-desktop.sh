@@ -11,9 +11,33 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${LH_MENU_PORT:-3311}"
-URL="http://127.0.0.1:${PORT}"
 PID_FILE="/tmp/learnharness-menu-server.pid"
 LOG_FILE="/tmp/learnharness-menu-server.log"
+
+# THE MOBILE SEAM (mobile wave, 2026-11-04): when a Tailscale interface
+# exists, the server binds THE TAILNET ADDRESS — reachable only by tailnet
+# members, never the raw LAN — and server mode turns on with a
+# launcher-generated password (stored 0600). The desktop shell signs the
+# owner in itself (LH_OWNER_PASSWORD); the phone pairs with a one-time
+# device token. Without Tailscale: loopback only, no server mode — exactly
+# the P0-3 posture.
+TS_IP="$(ip -4 -o addr show dev tailscale0 2>/dev/null | awk '{split($4,a,"/"); print a[1]; exit}')"
+SECRET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/learnharness-menu"
+mkdir -p "$SECRET_DIR"
+PASSWORD_FILE="$SECRET_DIR/server-password"
+if [ -n "$TS_IP" ]; then
+	if [ ! -s "$PASSWORD_FILE" ]; then
+		(umask 077 && head -c 32 /dev/urandom | base64 | tr -d '=+/' >"$PASSWORD_FILE")
+	fi
+	LH_SERVER_PASSWORD="$(cat "$PASSWORD_FILE")"
+	export LH_SERVER_PASSWORD
+	export LH_OWNER_PASSWORD="$LH_SERVER_PASSWORD"
+	HOST_BIND="$TS_IP"
+	URL="http://${TS_IP}:${PORT}"
+else
+	HOST_BIND="127.0.0.1"
+	URL="http://127.0.0.1:${PORT}"
+fi
 
 up() {
 	curl -fsS -o /dev/null --max-time 2 "${URL}/api/v1/bootstrap" 2>/dev/null
@@ -34,7 +58,7 @@ if ! up; then
 			# without it the standalone server resolves its own build-tree data/
 			# and the app shows an empty (or traced-junk) state instead of the
 			# learner's real sessions, graph and keys.
-			HOSTNAME=127.0.0.1 PORT="${PORT}" NODE_ENV=production \
+			HOSTNAME="${HOST_BIND}" PORT="${PORT}" NODE_ENV=production \
 				LH_DATA_DIR="${REPO}/data" LH_AUTH_FILE="${REPO}/auth.json" \
 				nohup node server.js >"${LOG_FILE}" 2>&1 &
 		echo $! >"${PID_FILE}"

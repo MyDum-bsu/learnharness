@@ -1,3 +1,4 @@
+import { setCoreTimeout } from "../core/node-timers.ts";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { invalidInputResult, questionResult } from "./tool-execute.ts";
@@ -296,7 +297,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	// (the fuse's own clock started just above). On fire it settles the
 	// trip and aborts the run — no exception out of the middle of the
 	// turn. Cleared at agent_end: a normal lesson leaves no dangling timer.
-	const wallClockTimer = setTimeout(() => {
+	const wallClockTimer: NodeJS.Timeout = setCoreTimeout(() => {
 		const trip = fuse.check();
 		if (trip) {
 			reportFuse(trip);

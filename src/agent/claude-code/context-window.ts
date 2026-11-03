@@ -1,3 +1,4 @@
+import { setCoreTimeout } from "../../core/node-timers.ts";
 import { randomUUID } from "node:crypto";
 
 const INITIALIZE_TIMEOUT_MS = 5_000;
@@ -21,7 +22,7 @@ export class ContextWindowProbe {
 	) {}
 
 	start(): void {
-		this.timer = setTimeout(() => this.proceed(false), INITIALIZE_TIMEOUT_MS);
+		this.timer = setCoreTimeout(() => this.proceed(false), INITIALIZE_TIMEOUT_MS);
 		this.timer.unref();
 		this.request(this.initializeId, { subtype: "initialize" });
 	}

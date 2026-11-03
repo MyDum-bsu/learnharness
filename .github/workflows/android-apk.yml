@@ -1,0 +1,62 @@
+name: android-apk
+
+# The LearnHarness Android client: Expo prebuild → Gradle assembleRelease.
+# Runs on every push to the working branches; a mobile-v* tag publishes the
+# APK to a GitHub Release (download from the Releases page).
+
+on:
+  push:
+    branches: [work, main, dev]
+    tags: ["mobile-v*"]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Prebuild (bare workflow)
+        run: npx expo prebuild -p android --no-install
+
+      - name: Build release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk "../../LearnHarness-${{ github.sha }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: learnharness-apk
+          path: LearnHarness-*.apk
+          if-no-files-found: error
+
+      - name: Publish to GitHub Releases (mobile-v* tags)
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        uses: softprops/action-ghrelease@v2
+        with:
+          files: LearnHarness-*.apk
+          generate_release_notes: true

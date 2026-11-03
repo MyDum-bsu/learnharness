@@ -102,7 +102,7 @@ function killDuringSave(chatId: string, passMessages: number, delayMs: number): 
 		stderr += String(chunk);
 	});
 	return new Promise<void>((resolve, reject) => {
-		let timer: NodeJS.Timeout | undefined;
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		child.stdout.on("data", (chunk) => {
 			if (!timer && String(chunk).includes("writing")) {
 				timer = setTimeout(() => child.kill("SIGKILL"), delayMs);

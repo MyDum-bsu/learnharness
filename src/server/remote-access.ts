@@ -220,7 +220,9 @@ function redirect(location: string, extra: Record<string, string> = {}): Respons
 export async function loginResponse(request: Request): Promise<Response> {
 	if (!serverModeEnabled()) return Response.json({ error: "Server mode is off (LH_SERVER_PASSWORD is not set)." }, { status: 404 });
 	const throttle = throttleKey(request.headers);
-	const form = await request.formData().catch(() => null);
+	const form = (await request.formData().catch(() => null)) as
+			| { get(name: string): FormDataEntryValue | null }
+			| null;
 	const next = safeNextPath(form?.get("next")?.toString());
 	const back = (error: string) => `/login?error=${error}&next=${encodeURIComponent(next)}`;
 	if (loginThrottled(throttle.key, throttle.max)) return redirect(back("throttled"));

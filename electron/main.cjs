@@ -776,6 +776,44 @@ async function main() {
 		return choice.mode === "remote" ? choice.url : null;
 	})();
 	const url = devUrl ?? remoteServerUrl ?? `http://127.0.0.1:${await freePort()}`;
+	// SERVER-MODE OWNER SIGN-IN (mobile wave, 2026-11-04): when the launcher
+	// runs the server in server mode (tailnet exposure), the shell signs the
+	// owner in ITSELF — LH_OWNER_PASSWORD is launcher-generated, never shown
+	// to anyone. The 30-day session cookie lands in the default session
+	// before the first page load, so the desktop never sees the login page.
+	const ownerPassword = process.env.LH_OWNER_PASSWORD;
+	if (devUrl && ownerPassword) {
+		const cookie = await new Promise<string | undefined>((resolve) => {
+			const target = new URL("/api/auth/login", devUrl);
+			const body = new URLSearchParams({ password: ownerPassword, next: "/" });
+			const request = http.request(
+				target,
+				{ method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" } },
+				(response) => {
+					response.resume();
+					resolve(response.headers["set-cookie"]?.find((candidate) => candidate.startsWith("lh_session=")));
+				},
+			);
+			request.on("error", () => resolve(undefined));
+			request.end(body.toString());
+		});
+		if (cookie) {
+			const pair = cookie.split(";")[0];
+			const eq = pair.indexOf("=");
+			const expires = cookie.match(/Expires=([^;]+)/i)?.[1];
+			try {
+				await session.defaultSession.cookies.set({
+					url: devUrl,
+					name: pair.slice(0, eq),
+					value: pair.slice(eq + 1),
+					...(expires ? { expirationDate: Math.floor(new Date(expires).getTime() / 1000) } : {}),
+				});
+				log("owner session: signed in for server mode");
+			} catch (error) {
+				log(`owner session cookie failed: ${error}`);
+			}
+		}
+	}
 	if (remoteServerUrl) {
 		// Nothing local starts: no child server, no subscription sign-in, and
 		// no desktop API capability (that header must never leave this Mac).

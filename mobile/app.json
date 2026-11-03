@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "LearnHarness",
+    "slug": "learnharness",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0f16",
+    "scheme": "learnharness",
+    "splash": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#0b0f16",
+      "resizeMode": "contain"
+    },
+    "android": {
+      "package": "com.mydum.learnharness",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b0f16"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "learnharness"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "extra": {
+      "eas": {}
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

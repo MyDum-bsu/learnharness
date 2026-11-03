@@ -1,3 +1,4 @@
+import { setCoreTimeout } from "../../core/node-timers.ts";
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -488,7 +489,7 @@ class ClaudeProcess implements LiveProcess {
 		this.stopping = true;
 		this.contextProbe?.close();
 		this.child.kill();
-		this.killTimer = setTimeout(() => this.child.kill("SIGKILL"), 1000);
+		this.killTimer = setCoreTimeout(() => this.child.kill("SIGKILL"), 1000);
 		this.killTimer.unref();
 	}
 

@@ -1,3 +1,4 @@
+import { setCoreTimeout } from "../../core/node-timers.ts";
 export type LiveProcess = { readonly owner: symbol; readonly sessionId: string | undefined; toolCallIds: string[]; kill(): void };
 
 // Tools usually call back within seconds, but a question tool holds its call until the learner
@@ -13,7 +14,7 @@ const liveProcesses = new Map<LiveProcess, NodeJS.Timeout>();
 
 export function addLiveProcess(process: LiveProcess): void {
 	removeLiveProcess(process);
-	const timer = setTimeout(() => {
+	const timer = setCoreTimeout(() => {
 		removeLiveProcess(process);
 		process.kill();
 	}, liveProcessIdleTimeoutMs.current);

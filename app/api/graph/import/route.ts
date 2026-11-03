@@ -101,7 +101,7 @@ async function readImportForm(request: Request): Promise<FormData> {
 			body.set(chunk, offset);
 			offset += chunk.byteLength;
 		}
-		return await new Response(body, { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData();
+		return (await new Response(body, { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData()) as unknown as FormData;
 	} finally {
 		// Do not wait for a tee's other consumer to finish before refusing an upload.
 		void reader.cancel().catch(() => undefined);
