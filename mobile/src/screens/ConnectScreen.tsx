@@ -120,8 +120,7 @@ export function ConnectScreen({
 				{error ? <Text style={styles.error}>{error}</Text> : null}
 
 				<Text style={styles.hint}>
-					Код выдаёт десктоп-приложение: Settings → Devices → Pair a device. Телефон и сервер — в одной сети
-					Tailscale. Код живёт 5 минут и сгорает после первой попытки.
+					Код выдаёт десктоп-приложение: Settings → Devices → Pair a device. Подойдёт любая сеть — Tailscale на телефоне не нужен. Код живёт 5 минут и сгорает после первой попытки.
 				</Text>
 			</View>
 		</KeyboardAvoidingView>

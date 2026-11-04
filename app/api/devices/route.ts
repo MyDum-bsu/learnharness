@@ -25,11 +25,24 @@ export async function POST(request: Request): Promise<Response> {
 	if (!adminAuthorized(request.headers)) {
 		return Response.json({ error: "Device management requires the owner's session or an admin token." }, { status: 403 });
 	}
-	const body = (await request.json().catch(() => null)) as { scope?: unknown; name?: unknown } | null;
+	const body = (await request.json().catch(() => null)) as { scope?: unknown; name?: unknown; origin?: unknown } | null;
 	const scope = body?.scope === "admin" ? "admin" : body?.scope === "mobile" ? "mobile" : null;
 	if (!scope) return Response.json({ error: 'scope must be "admin" or "mobile"' }, { status: 400 });
 	const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim().slice(0, 60) : "New device";
-	const origin = new URL(request.url).origin;
+	// The QR must carry the address the PHONE can reach. Behind a funnel the
+	// proxy rewrites Host to localhost, so request.url cannot be trusted —
+	// the desktop CLIENT knows its own window origin (the funnel URL) and
+	// sends it; a declared http(s) origin wins, the request-derived one is
+	// the fallback for direct/local use.
+	let origin = new URL(request.url).origin;
+	if (typeof body?.origin === "string") {
+		try {
+			const declared = new URL(body.origin);
+			if (declared.protocol === "http:" || declared.protocol === "https:") origin = declared.origin;
+		} catch {
+			/* ignore a malformed origin — fall back to the request's */
+		}
+	}
 	const minted = mintPairing(scope, name, origin);
 	return Response.json(minted, { headers: { "Cache-Control": "no-store" } });
 }

@@ -36,6 +36,7 @@ const { randomBytes } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
+const https = require("node:https");
 const net = require("node:net");
 const path = require("node:path");
 
@@ -804,7 +805,10 @@ async function main() {
 		const cookie = await new Promise((resolve) => {
 			const target = new URL("/api/auth/login", devUrl);
 			const body = new URLSearchParams({ password: ownerPassword, next: "/" });
-			const request = http.request(
+			// The dev URL may be an HTTPS funnel host (phone pairing without
+			// Tailscale, 2026-11-05) — pick the matching client.
+			const client = target.protocol === "https:" ? https : http;
+			const request = client.request(
 				target,
 				{ method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" } },
 				(response) => {

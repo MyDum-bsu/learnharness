@@ -63,7 +63,7 @@ export function DevicesSection() {
 			const response = await fetch("/api/devices", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ scope: "mobile", name: "Phone" }),
+				body: JSON.stringify({ scope: "mobile", name: "Phone", origin: window.location.origin }),
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -99,8 +99,7 @@ export function DevicesSection() {
 	return (
 		<div style={{ display: "grid", gap: 16 }}>
 			<p style={{ color: "#8b95a5", fontSize: 13, lineHeight: 1.5, margin: 0 }}>
-				Телефон подключается по коду из этой страницы (или сканом QR камерой). Телефон и сервер должны быть в
-				одной сети Tailscale. Отзыв устройства отрезает ему доступ и push мгновенно.
+				Телефон подключается по коду из этой страницы (или сканом QR камерой) из любой сети — Tailscale на телефоне не нужен. Отзыв устройства отрезает ему доступ и push мгновенно.
 			</p>
 
 			<div style={row}>
