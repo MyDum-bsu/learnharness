@@ -13,6 +13,20 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${LH_MENU_PORT:-3311}"
 PID_FILE="/tmp/learnharness-menu-server.pid"
 LOG_FILE="/tmp/learnharness-menu-server.log"
+LAUNCH_LOG="/tmp/learnharness-launcher.log"
+# Menu launches get a minimal environment (no login profile): keep a log
+# so a failed start is diagnosable instead of "nothing happens".
+exec >>"$LAUNCH_LOG" 2>&1
+echo "— launch $(date -Is) —"
+
+# Menu PATH has no nvm: pin a Node 26 bin dir when one exists (the server
+# and the electron CLI both need node; Next 16 standalone wants Node 26).
+for candidate in "$HOME"/.nvm/versions/node/v26.*/bin; do
+	if [ -x "$candidate/node" ]; then
+		export PATH="$candidate:$PATH"
+		break
+	fi
+done
 
 # THE MOBILE SEAM (mobile wave, 2026-11-04): when a Tailscale interface
 # exists, the server binds THE TAILNET ADDRESS — reachable only by tailnet
@@ -39,8 +53,12 @@ else
 	URL="http://127.0.0.1:${PORT}"
 fi
 
+# Health check by ANSWER, not by status: in server mode every route
+# answers 401 without a session — a 401 still proves the server is up.
 up() {
-	curl -fsS -o /dev/null --max-time 2 "${URL}/api/v1/bootstrap" 2>/dev/null
+	local code
+	code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 "${URL}/api/v1/bootstrap" 2>/dev/null || true)"
+	[ -n "$code" ] && [ "$code" != "000" ]
 }
 
 STARTED=0
