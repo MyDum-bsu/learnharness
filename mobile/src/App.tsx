@@ -91,20 +91,32 @@ export default function App() {
 }
 
 function parsePairUrl(url: string): PairPrefill | null {
-	try {
-		const parsed = new URL(url);
-		if (parsed.protocol !== "learnharness:" || !parsed.pathname.startsWith("//pair")) return null;
-		// learnharness://pair?server=…&code=… — host/path forms vary by
-		// Android's URL parsing of custom schemes; read from BOTH search
-		// params and the host form.
-		const params = parsed.searchParams;
-		const server = params.get("server") ?? (parsed.hostname ? `http://${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}` : undefined);
-		const code = params.get("code") ?? undefined;
-		if (!server || !code) return null;
-		return { server, code };
-	} catch {
-		return null;
+	// Scheme-safe manual parse: WHATWG URL puts the deep link's host part
+	// ("pair") into hostname and empties pathname for custom schemes —
+	// string slicing is the only behavior that matches what the desktop QR
+	// encodes (learnharness://pair?server=…&code=…).
+	const marker = "learnharness://";
+	if (!url.startsWith(marker)) return null;
+	const rest = url.slice(marker.length);
+	const question = rest.indexOf("?");
+	if (question === -1) return null;
+	const path = rest.slice(0, question).replace(/^\/*|\/*$/g, "").toLowerCase();
+	if (path !== "pair") return null;
+	const params: Record<string, string> = {};
+	for (const part of rest.slice(question + 1).split("&")) {
+		const eq = part.indexOf("=");
+		if (eq > 0) {
+			try {
+				params[part.slice(0, eq)] = decodeURIComponent(part.slice(eq + 1).replace(/\+/g, " "));
+			} catch {
+				return null;
+			}
+		}
 	}
+	const server = params.server;
+	const code = params.code;
+	if (!server || !code) return null;
+	return { server, code };
 }
 
 const styles = StyleSheet.create({
