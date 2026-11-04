@@ -24,3 +24,6 @@ xai-credentials.json*
 
 # self-hosting secrets (docker-compose env_file)
 .env.server
+
+# test-suite scratch data dir (never the live data/)
+.test-data/
