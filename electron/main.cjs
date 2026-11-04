@@ -52,6 +52,12 @@ const PRODUCT_NAME = "LearnHarness";
 // Must run before the LH_DEV_URL suffix below — dev becomes
 // "LearnHarness-dev".
 app.setName(PRODUCT_NAME);
+// Linux docks resolve the icon by DESKTOP NAME — --class alone leaves the
+// fork window grouped under the official app's gray icon (2026-11-04).
+// Guarded: the update-test vm stubs `app` without this API.
+if (process.env.LH_DEV_URL && typeof app.setDesktopName === "function") {
+	app.setDesktopName("learnharness-fork.desktop");
+}
 const AUTH_FILE = () => path.join(app.getPath("userData"), "auth.json");
 const DATA_DIR = () => path.join(app.getPath("userData"), "data");
 /** Local vs self-hosted server choice (electron/remote-server.cjs). */
