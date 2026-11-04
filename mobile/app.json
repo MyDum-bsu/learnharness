@@ -8,6 +8,7 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0b0f16",
     "scheme": "learnharness",
+    "plugins": ["./plugins/cleartext-plugin.js"],
     "splash": {
       "image": "./assets/splash.png",
       "backgroundColor": "#0b0f16",
