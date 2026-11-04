@@ -11,6 +11,7 @@ const { withAndroidManifest } = require("expo/config-plugins");
 module.exports = function cleartextPlugin(config) {
 	return withAndroidManifest(config, (cfg) => {
 		const application = cfg.modResults.manifest.application?.[0];
+		console.log("[cleartext-plugin] mod invoked; application node:", application ? "present" : "ABSENT");
 		if (application) {
 			application.$["android:usesCleartextTraffic"] = "true";
 		}

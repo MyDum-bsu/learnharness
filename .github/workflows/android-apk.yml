@@ -43,6 +43,9 @@ jobs:
       - name: Prebuild (bare workflow)
         run: npx expo prebuild -p android --no-install
 
+      - name: Allow cleartext http (post-prebuild manifest patch)
+        run: node ../scripts/mobile-postprebuild.mjs
+
       - name: Build release APK
         run: |
           cd android
