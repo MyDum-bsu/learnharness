@@ -104,4 +104,4 @@ export LH_DEV_URL="${URL}"
 # Foreground (no exec): the EXIT trap must fire when the window closes, so
 # a server this launch started goes down with it. --class keeps the fork's
 # window distinct from the official AppImage's in the dock (both can run).
-"${REPO}/node_modules/.bin/electron" "${REPO}" --no-sandbox --class=LearnHarness-Fork
+"${REPO}/node_modules/.bin/electron" "${REPO}" --no-sandbox --class=learnharness-fork

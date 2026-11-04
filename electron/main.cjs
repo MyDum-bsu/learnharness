@@ -293,10 +293,14 @@ function killServer() {
  *  - will-navigate pinned to the app origin; window.open always denied —
  *    external links go to the real browser via shell.openExternal. */
 function createWindow(url) {
+	// The dev shell is OUR fork running beside the official AppImage
+	// (2026-11-04): give its window an unmistakable title so the dock and
+	// the task switcher never confuse the two apps.
+	const forked = !!process.env.LH_DEV_URL;
 	const win = new BrowserWindow({
 		width: 1440,
 		height: 900,
-		title: PRODUCT_NAME,
+		title: forked ? `${PRODUCT_NAME} Fork` : PRODUCT_NAME,
 		// Merged chrome (owner, 2026-09-17): the system title bar is gone;
 		// the app's own 60px header bands ARE the title bar. The traffic
 		// lights float over the sidebar's LH wordmark band, vertically
@@ -378,6 +382,9 @@ function createWindow(url) {
 	});
 
 	void win.loadURL(url);
+	// The page's own title must not replace the fork identity (title bar,
+	// dock menu, window switcher all read this).
+	if (forked) win.on("page-title-updated", (event) => event.preventDefault());
 	// Zoom truth reaches the renderer for EVERY load (reload, nav): the
 	// renderer's --lh-zoom must never go stale. The fallback catcher below
 	// covers ⌘= / layout variants the menu's ⌘Plus may not claim — menu-
@@ -395,7 +402,12 @@ function createWindow(url) {
 		event.preventDefault();
 	});
 
-	win.once("ready-to-show", () => win.show());
+	win.once("ready-to-show", () => {
+		win.show();
+		// A menu launch must surface OUR window even when the official app
+		// is already focused on screen.
+		if (forked) win.focus();
+	});
 	return win;
 }
 
