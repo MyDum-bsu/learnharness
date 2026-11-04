@@ -143,7 +143,13 @@ export function appsOnlyRefusal(api: boolean): Response {
 
 /** Paths reachable without signing in (the login flow itself). */
 export function isPublicPath(pathname: string): boolean {
-	return pathname === "/login" || pathname.startsWith("/api/auth/");
+	return (
+		pathname === "/login" ||
+		pathname.startsWith("/api/auth/") ||
+		// The pairing exchange: the one-time code IS the credential (5 min,
+		// one attempt) — a phone without a session must reach it.
+		pathname === "/api/devices/pair"
+	);
 }
 
 /** Only same-origin relative redirects after login — never an open redirect. */

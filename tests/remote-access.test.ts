@@ -65,7 +65,7 @@ test("request authorization: cookie or long-enough bearer token", () => {
 });
 
 test("public paths and redirect targets", () => {
-	assert(isPublicPath("/login") && isPublicPath("/api/auth/login"));
+	assert(isPublicPath("/login") && isPublicPath("/api/auth/login") && isPublicPath("/api/devices/pair"));
 	assert(!isPublicPath("/") && !isPublicPath("/api/chats") && !isPublicPath("/loginx"));
 	assert.equal(safeNextPath("/chat/abc?x=1"), "/chat/abc?x=1");
 	for (const bad of ["//evil.test", "https://evil.test", "/\\evil.test", "", null]) assert.equal(safeNextPath(bad), "/");
