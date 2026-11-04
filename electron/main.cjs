@@ -783,7 +783,7 @@ async function main() {
 	// before the first page load, so the desktop never sees the login page.
 	const ownerPassword = process.env.LH_OWNER_PASSWORD;
 	if (devUrl && ownerPassword) {
-		const cookie = await new Promise<string | undefined>((resolve) => {
+		const cookie = await new Promise((resolve) => {
 			const target = new URL("/api/auth/login", devUrl);
 			const body = new URLSearchParams({ password: ownerPassword, next: "/" });
 			const request = http.request(
