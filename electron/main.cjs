@@ -391,7 +391,7 @@ function createWindow(url) {
 	void win.loadURL(url);
 	// The page's own title must not replace the fork identity (title bar,
 	// dock menu, window switcher all read this).
-	if (forked) win.on("page-title-updated", (event) => event.preventDefault());
+	if (forked && typeof win.on === "function") win.on("page-title-updated", (event) => event.preventDefault());
 	// Zoom truth reaches the renderer for EVERY load (reload, nav): the
 	// renderer's --lh-zoom must never go stale. The fallback catcher below
 	// covers ⌘= / layout variants the menu's ⌘Plus may not claim — menu-
@@ -413,7 +413,7 @@ function createWindow(url) {
 		win.show();
 		// A menu launch must surface OUR window even when the official app
 		// is already focused on screen.
-		if (forked) win.focus();
+		if (forked && typeof win.focus === "function") win.focus();
 	});
 	return win;
 }

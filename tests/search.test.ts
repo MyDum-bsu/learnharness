@@ -11,17 +11,18 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolveSearchEngineFor, tavilyProvider, braveProvider } from "../src/server/search.ts";
+import { resolveSearchEngineFor, tavilyProvider, braveProvider, duckduckgoProvider } from "../src/server/search.ts";
 
 describe("resolveSearchEngineFor (the auto-detect decision)", () => {
-	it("no keys: honestly unavailable, no default", () => {
+	it("no keys: the KEYLESS open default answers first (duckduckgo, owner 2026-11-05)", () => {
 		const out = resolveSearchEngineFor(undefined, {});
-		assert.ok(!out.available);
-		assert.equal(out.engine, null);
-		assert.match(out.reason, /no search engine configured/i);
+		assert.ok(out.available);
+		assert.equal(out.engine, "duckduckgo");
+		assert.equal(out.key, null);
+		assert.match(out.reason, /keyless open default/);
 	});
 
-	it("a key alone is enough — no engine choice needed", () => {
+	it("a key alone is enough — no engine choice needed (keyed ranks above DDG)", () => {
 		const tav = resolveSearchEngineFor(undefined, { tavily: "tvly-throwaway-key-00001" });
 		assert.ok(tav.available);
 		assert.equal(tav.engine, "tavily");
@@ -57,6 +58,13 @@ describe("resolveSearchEngineFor (the auto-detect decision)", () => {
 		assert.equal(out.engine, null);
 		assert.match(out.reason, /tavily/);
 		assert.match(out.reason, /API key is missing/);
+	});
+
+	it("pinned duckduckgo is always live — keyless by design", () => {
+		const out = resolveSearchEngineFor("duckduckgo", {});
+		assert.ok(out.available);
+		assert.equal(out.engine, "duckduckgo");
+		assert.equal(out.key, null);
 	});
 });
 
@@ -129,5 +137,34 @@ describe("braveProvider (wire shape per Brave's dashboard docs, verified 2026-09
 			new Response("rate limited", { status: 429 }),
 		);
 		await assert.rejects(provider.search("q", 5), /Brave search API 429/);
+	});
+});
+describe("duckduckgoProvider (the keyless open default, 2026-11-05)", () => {
+	it("POSTs the html form and parses result__a + result__snippet", async () => {
+		const html = [
+			'<a class="result__a" href="https://en.wikipedia.org/wiki/Transformer_(deep_learning)">Transformer (deep learning) - Wikipedia</a>',
+			'<a class="result__snippet" href="/x">In deep learning, the transformer is a family of models.</a>',
+			'<a class="result__a" href="/l/?uddg=https%3A%2F%2Farxiv.org%2Fabs%2F1706.03762&rut=x">Attention Is All You Need</a>',
+			'<a class="result__snippet" href="/x">The original transformer paper.</a>',
+		].join("\n");
+		const calls: { url: string; body: string }[] = [];
+		const provider = duckduckgoProvider(async (url, init) => {
+			calls.push({ url: String(url), body: String(init?.body ?? "") });
+			return new Response(html, { status: 200 });
+		});
+		const hits = await provider.search("transformer attention", 5);
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0]!.url, "https://html.duckduckgo.com/html/");
+		assert.match(calls[0]!.body, /q=transformer\+attention/);
+		assert.equal(hits.length, 2);
+		assert.equal(hits[0]!.title, "Transformer (deep learning) - Wikipedia");
+		assert.equal(hits[0]!.url, "https://en.wikipedia.org/wiki/Transformer_(deep_learning)");
+		assert.match(hits[0]!.snippet, /family of models/);
+		assert.equal(hits[1]!.url, "https://arxiv.org/abs/1706.03762", "the uddg redirect decodes");
+	});
+
+	it("surfaces the HTTP status on failure", async () => {
+		const provider = duckduckgoProvider(async () => new Response("blocked", { status: 403 }));
+		await assert.rejects(() => provider.search("q", 5), /DuckDuckGo search 403/);
 	});
 });

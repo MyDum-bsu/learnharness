@@ -1,12 +1,16 @@
+"use client";
+
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { Button } from "@/components/ui/button";
 
 /**
- * THE DEVICES SECTION (mobile wave, 2026-11-04): pair a phone (one-time
- * code → QR the phone's camera reads via the learnharness:// deep link),
- * list paired devices, revoke. The QR carries the address the app window
- * itself was loaded from — when the launcher binds the tailnet interface,
- * that IS the address the phone reaches over Tailscale.
+ * THE DEVICES SECTION (pairing wave, 2026-11-02; restyled 2026-11-05 to the
+ * settings design language — the same tokens as the other sections): pair
+ * a phone (one-time code → QR the phone's camera reads via the
+ * learnharness:// deep link), list paired devices, revoke. The QR carries
+ * the address the app window itself was loaded from (the funnel URL when
+ * the launcher publishes the app) — the phone pairs from any network.
  */
 
 interface DeviceRow {
@@ -24,12 +28,6 @@ interface PendingRow {
 	scope: string;
 	expiresAt: string;
 }
-
-const card: React.CSSProperties = { border: "1px solid #1f2937", borderRadius: 10, padding: 16, display: "grid", gap: 12 };
-const row: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12 };
-const muted: React.CSSProperties = { color: "#8b95a5", fontSize: 12 };
-const button: React.CSSProperties = { background: "#4f8ef7", color: "#0b0f16", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, cursor: "pointer" };
-const ghost: React.CSSProperties = { background: "transparent", color: "#f87171", border: "1px solid #2a1518", borderRadius: 8, padding: "6px 10px", cursor: "pointer" };
 
 export function DevicesSection() {
 	const [devices, setDevices] = useState<DeviceRow[]>([]);
@@ -52,11 +50,9 @@ export function DevicesSection() {
 
 	useEffect(() => {
 		void refresh();
-		const poll = setInterval(() => void refresh(), 5000);
-		return () => clearInterval(poll);
 	}, [refresh]);
 
-	const pair = async () => {
+	const pair = useCallback(async () => {
 		setBusy(true);
 		setError(undefined);
 		try {
@@ -73,7 +69,7 @@ export function DevicesSection() {
 			const url = await QRCode.toDataURL(minted.pairingUrl, {
 				width: 280,
 				margin: 1,
-				color: { dark: "#0b0f16", light: "#ffffff" },
+				color: { dark: "#141414", light: "#ffffff" },
 			});
 			setQr({ url, code: minted.code });
 			void refresh();
@@ -82,73 +78,76 @@ export function DevicesSection() {
 		} finally {
 			setBusy(false);
 		}
-	};
+	}, [refresh]);
 
-	const revoke = async (id: string) => {
-		setError(undefined);
-		try {
-			const response = await fetch(`/api/devices/${encodeURIComponent(id)}`, { method: "DELETE" });
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+	const revoke = useCallback(
+		async (id: string) => {
+			setError(undefined);
+			await fetch(`/api/devices/${encodeURIComponent(id)}`, { method: "DELETE" });
 			setQr(undefined);
 			void refresh();
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "не удалось отозвать");
-		}
-	};
+		},
+		[refresh],
+	);
 
 	return (
-		<div style={{ display: "grid", gap: 16 }}>
-			<p style={{ color: "#8b95a5", fontSize: 13, lineHeight: 1.5, margin: 0 }}>
-				Телефон подключается по коду из этой страницы (или сканом QR камерой) из любой сети — Tailscale на телефоне не нужен. Отзыв устройства отрезает ему доступ и push мгновенно.
+		<div className="flex flex-col gap-4">
+			<p className="m-0 font-ui text-xs leading-relaxed text-muted-foreground">
+				Телефон подключается сканом QR (или вручную: адрес + код) из любой сети — Tailscale на телефоне не
+				нужен. Отзыв устройства отрезает ему доступ и push мгновенно.
 			</p>
 
-			<div style={row}>
-				<button style={button} onClick={() => void pair()} disabled={busy}>
+			<div className="flex items-center gap-3">
+				<Button onClick={() => void pair()} disabled={busy}>
 					{busy ? "…" : "Pair a phone"}
-				</button>
-				{pending.length > 0 ? <span style={muted}>Ждёт обмена: {pending.map((row) => row.code).join(", ")}</span> : null}
+				</Button>
+				{pending.length > 0 ? (
+					<span className="font-mono text-xs text-muted-foreground">
+						ждёт обмена: {pending.map((row) => row.code).join(", ")}
+					</span>
+				) : null}
 			</div>
 
-			{error ? <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{error}</p> : null}
+			{error ? <p className="m-0 text-xs text-destructive">{error}</p> : null}
 
 			{qr ? (
-				<div style={card}>
-					<div style={row}>
-						<img src={qr.url} alt="Pairing QR" width={180} height={180} style={{ borderRadius: 8 }} />
-						<div style={{ display: "grid", gap: 6 }}>
-							<Text style={{ color: "#e8ecf3", fontWeight: 700, fontSize: 20, letterSpacing: 4, margin: 0 }}>{qr.code}</Text>
-							<span style={muted}>
-								Камерой телефона — на QR, или введи код вручную на экране подключения. Код на 5 минут, одна
-								попытка.
-							</span>
+				<div
+					className="flex items-center gap-4 rounded-sm border border-border bg-background p-3"
+					data-testid="pairing-qr"
+				>
+					<img src={qr.url} alt="Pairing QR" width={180} height={180} className="rounded-sm" />
+					<div className="flex min-w-0 flex-col gap-1.5">
+						<div className="font-mono text-xl font-semibold tracking-[0.3em] text-foreground">{qr.code}</div>
+						<div className="text-xs text-muted-foreground">
+							Камерой телефона — на QR, или введи код вручную на экране подключения. Код на 5 минут, одна
+							попытка.
 						</div>
 					</div>
 				</div>
 			) : null}
 
-			<div style={{ display: "grid", gap: 8 }}>
-				{devices.length === 0 ? <span style={muted}>Пока нет подключённых устройств.</span> : null}
-				{devices.map((device) => (
-					<div key={device.id} style={{ ...row, border: "1px solid #1f2937", borderRadius: 10, padding: 12 }}>
-						<div style={{ flex: 1 }}>
-							<div style={{ color: "#e8ecf3", fontWeight: 600 }}>
-								{device.name} <span style={muted}>· {device.scope}</span>
-							</div>
-							<div style={muted}>
-								с {new Date(device.createdAt).toLocaleDateString()}
-								{device.expiresAt ? ` · токен до ${new Date(device.expiresAt).toLocaleDateString()}` : " · без срока"}
-							</div>
+			{devices.length === 0 ? (
+				<span className="font-ui text-xs text-muted-foreground">Пока нет подключённых устройств.</span>
+			) : null}
+			{devices.map((device) => (
+				<div
+					key={device.id}
+					className="flex w-full items-center justify-between gap-3 rounded-sm px-1 py-1.5 text-left font-ui text-xs"
+				>
+					<div className="min-w-0 flex-1">
+						<div className="font-mono text-foreground">
+							{device.name} <span className="text-muted-foreground">· {device.scope}</span>
 						</div>
-						<button style={ghost} onClick={() => void revoke(device.id)}>
-							Отозвать
-						</button>
+						<div className="text-muted-foreground">
+							с {new Date(device.createdAt).toLocaleDateString()}
+							{device.expiresAt ? ` · токен до ${new Date(device.expiresAt).toLocaleDateString()}` : " · без срока"}
+						</div>
 					</div>
-				))}
-			</div>
+					<Button variant="ghost" onClick={() => void revoke(device.id)}>
+						Отзыв
+					</Button>
+				</div>
+			))}
 		</div>
 	);
-}
-
-function Text(props: React.HTMLAttributes<HTMLParagraphElement>) {
-	return <p {...props} />;
 }

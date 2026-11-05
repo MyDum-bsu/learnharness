@@ -72,6 +72,72 @@ export function tavilyProvider(apiKey: string, fetchFn: FetchLike = fetch): Sear
 	};
 }
 
+/** DuckDuckGo HTML (KEYLESS, open-default 2026-11-05): POSTs the query
+ *  form to html.duckduckgo.com/html/ (the GET path serves a bot-anomaly
+ *  page from the owner's region — POST verified working). Parses the
+ *  result__a anchors (direct hrefs) + result__snippet bodies. No key, no
+ *  registration; rate-friendliness comes from the app usage pattern. */
+export function duckduckgoProvider(fetchFn: FetchLike = fetch): SearchProvider {
+	return {
+		id: "duckduckgo",
+		async search(query: string, count: number): Promise<SearchHit[]> {
+			const resp = await fetchFn("https://html.duckduckgo.com/html/", {
+				method: "POST",
+				headers: {
+					"content-type": "application/x-www-form-urlencoded",
+					"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+				},
+				body: new URLSearchParams({ q: query, b: "" }).toString(),
+				signal: AbortSignal.timeout(30_000),
+			});
+			if (!resp.ok) {
+				const body = await resp.text();
+				throw new Error(`DuckDuckGo search ${resp.status}: ${body.slice(0, 200)}`);
+			}
+			const html = await resp.text();
+			const strip = (raw: string): string =>
+				raw
+					.replace(/<[^>]+>/g, "")
+					.replace(/&amp;/g, "&")
+					.replace(/&quot;/g, '"')
+					.replace(/&#x27;|&#39;/g, "'")
+					.replace(/&lt;/g, "<")
+					.replace(/&gt;/g, ">")
+					.replace(/&nbsp;/g, " ")
+					.replace(/\s+/g, " ")
+					.trim();
+			const hits: SearchHit[] = [];
+			const anchors = html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g);
+			for (const match of anchors) {
+				if (hits.length >= count) break;
+				const href = match[1];
+				const title = match[2];
+				if (!href || !title) continue;
+				// Anchors carry direct urls; the /l/?uddg= redirect form decodes back.
+				const uddg = /uddg=([^&"]+)/.exec(href)?.[1];
+				let direct = uddg ?? href;
+				try {
+					direct = decodeURIComponent(direct);
+				} catch {
+					/* keep the raw href — decodeURIComponent throws on stray % */
+				}
+				if (!/^https?:\/\//i.test(direct)) continue;
+				hits.push({ title: strip(title).slice(0, 200), url: direct, snippet: "" });
+			}
+			// Snippets land 1:1 with anchors in document order — zip them.
+			let index = 0;
+			for (const match of html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)) {
+				const body = match[1];
+				if (!body) continue;
+				if (hits[index]) hits[index] = { ...hits[index]!, snippet: strip(body).slice(0, 500) };
+				index += 1;
+				if (index >= hits.length && index > 0) break;
+			}
+			return hits;
+		},
+	};
+}
+
 /** Brave: GET https://api.search.brave.com/res/v1/web/search with the
  *  key in the X-Subscription-Token header. VERIFIED against Brave's
  *  dashboard docs, 2026-09-20: count max 20; response
@@ -111,9 +177,12 @@ export function braveProvider(apiKey: string, fetchFn: FetchLike = fetch): Searc
 /** The engines this wave ships, in PREFERENCE order (both keys present,
  *  no explicit pin → the first live engine wins; owner decision
  *  2026-09-20: Tavily first — the AI-native search API the wave chose). */
-const ENGINE_ORDER: ReadonlyArray<{ id: SearchEngineId; envVar: string }> = [
+const ENGINE_ORDER: ReadonlyArray<{ id: SearchEngineId; envVar: string | null }> = [
 	{ id: "tavily", envVar: "TAVILY_API_KEY" },
 	{ id: "brave", envVar: "BRAVE_API_KEY" },
+	// The OPEN default (2026-11-05): keyless, always live — a learner gets
+	// working search with zero registration. Keyed engines outrank it.
+	{ id: "duckduckgo", envVar: null },
 ];
 
 /** The engine's key (env-or-file; env wins) — null when the engine is
@@ -125,33 +194,46 @@ function engineKey(id: SearchEngineId): string | null {
 }
 
 /** Resolve the search state PURELY from the given pins (testable): the
- *  explicit engine (if pinned) wins but must be keyed; absent pin → first
- *  keyed engine in preference order. Never throws. */
+ *  explicit engine wins but must be live (keyed engines need their key);
+ *  absent pin → first LIVE engine in preference order — duckduckgo is
+ *  keyless and ALWAYS live, the open default (owner 2026-11-05). Never
+ *  throws. */
 export function resolveSearchEngineFor(
 	pinned: SearchEngineId | undefined,
 	/** Per-engine live keys (absent engine = absent property is fine). */
 	keys: Partial<Record<SearchEngineId, string | undefined>>,
 ): SearchStatus & { key: string | null } {
-	const pinnedKey = pinned ? keys[pinned] ?? null : null;
+	const liveKey = (id: SearchEngineId): string | null => (id === "duckduckgo" ? null : keys[id] ?? null);
+	const isLive = (id: SearchEngineId): boolean => (id === "duckduckgo" ? true : Boolean(keys[id]));
 	if (pinned) {
-		if (!pinnedKey) {
+		if (!isLive(pinned)) {
 			return {
 				available: false,
 				engine: null,
-				reason: `search engine is set to "${pinned}" but its API key is missing — set the ${pinned === "tavily" ? "TAVILY_API_KEY" : "BRAVE_API_KEY"} key`,
+				reason: `search engine is set to "${pinned}" but its API key is missing — set the ${pinned === "tavily" ? "TAVILY_API_KEY" : "BRAVE_API_KEY"} key, or switch the engine to duckduckgo`,
 				key: null,
 			};
 		}
-		return { available: true, engine: pinned, reason: `search engine: ${pinned} (chosen)`, key: pinnedKey };
+		return {
+			available: true,
+			engine: pinned,
+			reason: `search engine: ${pinned} (chosen)`,
+			key: liveKey(pinned),
+		};
 	}
 	for (const { id } of ENGINE_ORDER) {
-		const key = keys[id] ?? null;
-		if (key) return { available: true, engine: id, reason: `search engine: ${id} (auto)`, key };
+		if (!isLive(id)) continue;
+		return {
+			available: true,
+			engine: id,
+			reason: `search engine: ${id} (auto${id === "duckduckgo" ? ", keyless open default" : ""})`,
+			key: liveKey(id),
+		};
 	}
 	return {
 		available: false,
 		engine: null,
-		reason: "no search engine configured — set a Tavily or Brave search API key",
+		reason: "no live search engine",
 		key: null,
 	};
 }
@@ -184,6 +266,9 @@ export function searchProvider(): SearchProvider | null {
 		tavily: engineKey("tavily") ?? undefined,
 		brave: engineKey("brave") ?? undefined,
 	});
-	if (!resolved.available || !resolved.key) return null;
-	return resolved.engine === "tavily" ? tavilyProvider(resolved.key) : braveProvider(resolved.key);
+	if (!resolved.available || resolved.engine === null) return null;
+	if (resolved.engine === "tavily") return tavilyProvider(resolved.key!);
+	if (resolved.engine === "brave") return braveProvider(resolved.key!);
+	if (resolved.engine === "duckduckgo") return duckduckgoProvider();
+	return null;
 }

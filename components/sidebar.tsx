@@ -682,7 +682,7 @@ function SessionsSidebar() {
 					{/* This build IS the owner's fork (2026-11-04): an always-visible
 					    badge so the fork window can never be mistaken for the
 					    official app when both run side by side. */}
-					<span className="lh-no-drag ml-2 rounded border border-accent/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+					<span className="lh-no-drag ml-2 rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
 						fork
 					</span>
 					<Hint label="Close sidebar" action="toggle-sidebar">

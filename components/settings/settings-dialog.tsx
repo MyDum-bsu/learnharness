@@ -48,6 +48,7 @@ import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
 import { DevicesSection } from "./devices-section.tsx";
+import { SkillsSection } from "./skills-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
@@ -62,6 +63,7 @@ const SECTIONS = [
 	{ id: "agent", label: "Agent" },
 	{ id: "appearance", label: "Appearance" },
 	{ id: "graph", label: "Graph" },
+	{ id: "skills", label: "Skills", hint: "Slash-commands" },
 	{ id: "devices", label: "Devices", hint: "Phones over Tailscale" },
 	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
 	{ id: "general", label: "General" },
@@ -373,6 +375,11 @@ export function SettingsDialogBody({
 							{active === "keys" && (
 								<SettingsSection title="Providers" testid="section-keys">
 									<KeysSection initialRow={initialRow ?? undefined} />
+								</SettingsSection>
+							)}
+							{active === "skills" && (
+								<SettingsSection title="Skills" testid="section-skills">
+									<SkillsSection />
 								</SettingsSection>
 							)}
 							{active === "devices" && (

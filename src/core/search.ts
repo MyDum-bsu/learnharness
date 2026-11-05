@@ -6,6 +6,9 @@
  * store (TAVILY_API_KEY / BRAVE_API_KEY — curated catalog), and the server
  * composes the live adapter. The Google CSE engine retired with this wave
  * (closed to new customers; dies Jan 2027) — replaced by Tavily + Brave.
+ * 2026-11-05 (owner: open search methods): DuckDuckGo HTML joined as the
+ * KEYLESS always-live default — no registration, works from the owner's
+ * region; keyed engines still outrank it in the preference order.
  *
  * Owner decisions baked here:
  *  - NO default engine in the factory record: an engine is live iff its
@@ -31,7 +34,7 @@ export interface SearchHit {
 }
 
 /** The engine ids this wave ships (the catalog: curated keys + adapters). */
-export type SearchEngineId = "tavily" | "brave";
+export type SearchEngineId = "tavily" | "brave" | "duckduckgo";
 
 /** A live search engine: an id (for status/labels) + one operation. The
  *  adapters own their wire protocol (fetch, timeouts, error mapping) —

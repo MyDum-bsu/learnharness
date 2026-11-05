@@ -13,6 +13,8 @@ import { chatGPTStreamError } from "../agent/chatgpt-stream.ts";
 import { SubscriptionRequestCycle, type SubscriptionDispatchLifecycle } from "../agent/subscription-request-cycle.ts";
 import { reconstructRequestCause } from "../core/native-messages.ts";
 import { createJobRunner } from "../agent/subagents/runner.ts";
+import { expandSlash } from "../core/skills.ts";
+import { skillMap } from "../store/skills.ts";
 import { notifyJobDone, notifyTurnSettled } from "./push.ts";
 import { createExtractionPipeline } from "../agent/subagents/extraction.ts";
 import type { ModelRole } from "../../config.ts";
@@ -179,6 +181,26 @@ export async function handleChatRequest(
 	}
 	const chatId = typeof body.chatId === "string" ? body.chatId : "";
 	if (!chatId) return Response.json({ error: "Unknown chat" }, { status: 404 });
+	// THE SLASH SEAM (skills wave, 2026-11-05): `/<skill> аргументы` expands
+	// into the skill's instruction body BEFORE parsing — the parsed input
+	// stays an ordinary text event, so the turn composition is untouched.
+	// An unknown /command refuses honestly (400); silently sending "/qwer"
+	// as prose would teach the model nothing.
+	if (
+		body.input &&
+		typeof body.input === "object" &&
+		(body.input as { type?: unknown }).type === "text" &&
+		typeof (body.input as { text?: unknown }).text === "string" &&
+		(body.input as { text: string }).text.trimStart().startsWith("/")
+	) {
+		const outcome = expandSlash((body.input as { text: string }).text, skillMap());
+		if (outcome.kind === "unknown") {
+			return Response.json({ error: `Неизвестный скилл "/${outcome.name}" — создай его в Settings → Skills` }, { status: 400 });
+		}
+		if (outcome.kind === "ok") {
+			body.input = { ...body.input, text: outcome.expanded };
+		}
+	}
 	let input: TurnInput;
 	try {
 		input = parseChatInput(body.input);
